@@ -1,0 +1,11 @@
+node_modules/
+state/
+artifacts/
+config.json
+!examples/config.json
+.env
+*.tgz
+*.zip
+*.log
+__pycache__/
+local-*

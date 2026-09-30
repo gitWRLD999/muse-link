@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "muse-chrome": {
+      "command": "ssh",
+      "args": ["-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "PasswordAuthentication=no", "agent-pc", "node \"C:/Tools/muse-link/bin/muse-link.mjs\" mcp chrome"]
+    },
+    "muse-sidescreen": {
+      "command": "ssh",
+      "args": ["-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "PasswordAuthentication=no", "agent-pc", "node \"C:/Tools/muse-link/bin/muse-link.mjs\" mcp sidescreen"]
+    }
+  }
+}

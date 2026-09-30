@@ -1,0 +1,24 @@
+{
+  "port": 18921,
+  "engines": {
+    "chrome": { "kind": "chrome", "profile": "" },
+    "sidescreen": { "kind": "sidescreen", "directory": "C:/Tools/SideScreenTools" },
+    "patchright": {
+      "kind": "mcp",
+      "command": "node",
+      "args": ["C:/Tools/OpenClaw/runtime/patchright-mcp/server.js"],
+      "cwd": "C:/Tools/OpenClaw",
+      "env": {
+        "PATCHRIGHT_MCP_ATTACH_ONLY": "1",
+        "PATCHRIGHT_MCP_NO_DAEMON": "1",
+        "PATCHRIGHT_MCP_CDP_PORT": "9333"
+      }
+    },
+    "desktop": {
+      "kind": "desktop",
+      "command": "C:/Tools/OpenClaw/.venv/Scripts/python.exe",
+      "args": ["C:/Tools/OpenClaw/desktop.py"],
+      "cwd": "C:/Tools/OpenClaw"
+    }
+  }
+}
