@@ -1,5 +1,14 @@
 # Muse Link
 
+Version 1.3.1 fixes regular Chrome recovery and stale OpenClaw routing guidance.
+Use `chrome_ready` to prepare a SideScreen window in the user's real profile,
+then `open_url`. The human's main-display window can stay put. Profile-token
+checks, closed-tab recovery and current-display placement prevent silently
+substituting an automation browser. See [account access](docs/regular-chrome.md).
+The combined configured channel now exposes 36 tools. Cold attachment may
+still activate Chrome; preparation stops before a requested business action
+when the focus guard detects that change.
+
 Connect Muse or another MCP-capable agent to the tools on your signed-in Windows PC over SSH. Keep the browser and desktop processes in the interactive session; expose their tools through a small authenticated loopback broker.
 
 This is the connection layer extracted from a working Muse/OpenClaw setup. It is a separate package from [SideScreen](https://github.com/gitWRLD999/sidescreen), which supplies the optional virtual display and scoped desktop input.
@@ -46,10 +55,10 @@ node .\bin\muse-link.mjs serve
 
 The config defaults to `%USERPROFILE%\AgentTools\MuseLink\config.json`, with credentials in its `state` directory and CLI screenshots in `artifacts`. Ctrl+C stops a manually started broker. A Windows broker providing desktop/browser adapters must run in a signed-in interactive session, rather than an SSH service session.
 
-You can also install the [v1.3.0 npm package archive](https://github.com/gitWRLD999/muse-link/releases/download/v1.3.0/gitwrld999-muse-link-1.3.0.tgz):
+You can also install the [v1.3.1 npm package archive](https://github.com/gitWRLD999/muse-link/releases/download/v1.3.1/gitwrld999-muse-link-1.3.1.tgz):
 
 ```powershell
-npm install -g https://github.com/gitWRLD999/muse-link/releases/download/v1.3.0/gitwrld999-muse-link-1.3.0.tgz
+npm install -g https://github.com/gitWRLD999/muse-link/releases/download/v1.3.1/gitwrld999-muse-link-1.3.1.tgz
 muse-link init
 muse-link serve
 ```
@@ -130,7 +139,7 @@ These scripts use the default home or `-HomeDirectory`. `Install-Startup.ps1` re
 
 | Engine kind | Interface |
 | --- | --- |
-| `chrome` | Pinned Playwright MCP extension mode; optional `profile` |
+| `chrome` | Playwright MCP extension mode; explicit `profile` directory required for access |
 | `mcp` | Trusted local `command`, `args`, optional absolute `cwd` and string `env` |
 | `desktop` | One JSON request on stdin, one JSON response on stdout |
 | `sidescreen` | Installed `SideScreen.Cua.exe`; optional absolute `directory` |

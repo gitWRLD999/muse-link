@@ -6,6 +6,7 @@ import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
+import {regularChromeTools} from '../src/browser.mjs';
 const home=path.join(process.env.USERPROFILE,'AgentTools/MuseLink');
 const report={channel:'persistent MCP stdio → authenticated broker → regular Chrome/SideScreen',checks:[],timings:[]};
 const pageTitle='Muse Link acceptance '+crypto.randomUUID().slice(0,8);
@@ -27,8 +28,8 @@ async function call(name,args={}) {
 }
 try {
   await client.connect(transport);
-  const tools=await client.listTools();const extra=tools.tools.some(t=>t.name==='agent_tools_status')?17:0;check(tools.tools.length===17+extra,'Combined channel discovers 9 browser + 8 desktop tools and configured assistance tools');
-  const status=await call('chrome_status');check(!status.result.isError,'Pinned Chrome connection is ready');check(status.data.profile==='Profile 1','Regular Chrome is explicitly Profile 1');
+  const tools=await client.listTools();const extra=tools.tools.some(t=>t.name==='agent_tools_status')?17:0;check(tools.tools.length===regularChromeTools.length+8+extra,'Combined channel discovers current regular Chrome, desktop and configured assistance tools');
+  const status=await call('chrome_ready');check(!status.result.isError&&status.data.ready,'Pinned Chrome connection is ready');check(status.data.profile==='Profile 1'&&status.data.profileTokenMatched,'Regular Chrome is explicitly Profile 1 with its matching extension token');
   const opened=await call('open_url',{url});check(!opened.result.isError && opened.data.title===pageTitle,'Navigate directly through the Muse channel');
   check(opened.result._meta.focus.Preserved,'Browser navigation preserves foreground and keyboard focus');
   const steps=await call('steps',{steps:[{action:'fill',role:'textbox',name:'Agent text',value:'Muse café Ω'},{action:'click',role:'button',name:'Increment browser counter'},{action:'check',role:'checkbox',name:'Agent checkbox'}]});

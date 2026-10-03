@@ -5,7 +5,8 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createSideScreenEngine} from './sidescreen.mjs';
 import {runJson} from './process.mjs';
-import {createRegularChrome, redactBrowserSecrets} from './browser.mjs';
+import {createRegularChrome, regularChromeTools, redactBrowserSecrets} from './browser.mjs';
+import {chromeProfileInfo,extensionTokenHash} from './chrome-profile.mjs';
 import {createAssistEngine} from './assist.mjs';
 
 export function engineForTool(config,request) {
@@ -20,6 +21,7 @@ const require = createRequire(import.meta.url);
 
 export function createEngines(config) {
   const clients = new Map(), sideScreens = new Map(), browsers = new Map(), assists = new Map(), health = new Map();
+  const browserReady = new Set();
   async function client(name, spec) {
     if (clients.has(name)) return clients.get(name);
     let command = spec.command === 'node' ? process.execPath : spec.command;
@@ -38,11 +40,13 @@ export function createEngines(config) {
         env.MUSE_CHROME_BOUNDS=JSON.stringify(status.agentScreen);
       }
     }
-    const c = new Client({name: 'Muse Link', version: '1.2.0'});
+    const c = new Client({name: 'Muse Link', version: '1.3.1'});
     const transport = new StdioClientTransport({command, args, cwd: spec.cwd || config.home, env, stderr: 'inherit'});
     try { await c.connect(transport); } catch (error) { await transport.close(); throw error; }
     clients.set(name, c);
-    c.onclose = () => { if (clients.get(name) === c) clients.delete(name); };
+    c.onclose = () => {
+      if (clients.get(name) === c) {clients.delete(name);browsers.delete(name);browserReady.delete(name);}
+    };
     return c;
   }
   const engines = {
@@ -79,18 +83,31 @@ export function createEngines(config) {
         if (!desktopActions.includes(request.tool)) throw Error('Unknown desktop action');
         return runJson(spec, {action: request.tool, arguments: request.arguments || {}});
       }
+      if(spec.kind==='chrome' && request.method==='list')return {tools:regularChromeTools};
+      if(spec.kind==='chrome' && !spec.profile?.trim())throw Error('Pin an explicit regular Chrome profile directory before account access. No automation-profile fallback is allowed.');
       const c = await client(name, spec);
       if(spec.kind==='chrome') {
-        if(!browsers.has(name))browsers.set(name,createRegularChrome({profile:spec.profile,call:(tool,args)=>c.callTool({name:tool,arguments:args},undefined,{timeout:60000}),getScreen:config.engines.sidescreen?.kind==='sidescreen'?async()=>{
+        if(!browsers.has(name))browsers.set(name,createRegularChrome({profile:spec.profile,getProfileInfo:()=>chromeProfileInfo(spec),tokenHash:extensionTokenHash(spec),call:(tool,args)=>c.callTool({name:tool,arguments:args},undefined,{timeout:60000}),getScreen:config.engines.sidescreen?.kind==='sidescreen'?async()=>{
           const result=await sideScreens.get('sidescreen')({method:'call',tool:'sidescreen_status',arguments:{}});const status=JSON.parse(result.content[0].text);return status.available?status.agentScreen:null;
         }:undefined}));
         try {
-          let invoke=()=>browsers.get(name)(request);
-          if(request.method==='call' && config.engines.sidescreen?.kind==='sidescreen') {
+          let guard=fn=>fn();
+          if(config.engines.sidescreen?.kind==='sidescreen') {
             if(!sideScreens.has('sidescreen'))sideScreens.set('sidescreen',createSideScreenEngine({directory:config.engines.sidescreen.directory,env:config.engines.sidescreen.env}));
-            const unguarded=invoke;invoke=()=>sideScreens.get('sidescreen').guard(unguarded);
+            guard=fn=>sideScreens.get('sidescreen').guard(fn);
           }
-          const result=await invoke();if(request.method==='call')health.set(name,{ok:!result.isError,profile:spec.profile,checkedAt:new Date().toISOString()});return result;
+          const inspect=['chrome_ready','chrome_status','list_tabs'].includes(request.tool);
+          // Cold attachment can activate Chrome. Prepare under its own guard
+          // before any requested navigation or form action, without replay.
+          if(!inspect&&!browserReady.has(name)) {
+            const prepared=await guard(()=>browsers.get(name)({method:'call',tool:'chrome_ready',arguments:{}}));
+            if(prepared.isError)return {...prepared,_meta:{...prepared._meta,preparationOnly:true}};
+            browserReady.add(name);
+          }
+          const result=await guard(()=>browsers.get(name)(request));
+          let ready=false;try{ready=JSON.parse(result.content?.find(c=>c.type==='text')?.text).ready===true;}catch{}
+          if(inspect&&!result.isError&&ready)browserReady.add(name);
+          health.set(name,{ok:!result.isError,profile:spec.profile,checkedAt:new Date().toISOString()});return result;
         }
         catch(error){health.set(name,{ok:false,error:'Chrome connection/action failed; inspect with chrome_status',checkedAt:new Date().toISOString()});throw error;}
       }

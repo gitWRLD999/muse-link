@@ -1,5 +1,11 @@
 # Fast agent channel
 
+Version 1.3.1 supplies 11 regular Chrome tools and 36 combined configured tools.
+Start account work with `chrome_ready`, then `open_url`; read
+[regular Chrome account access](regular-chrome.md) for profile-token checks,
+closed-tab/display recovery and sign-in handoff. Earlier counts and measurement
+results below describe the prior versions.
+
 Version 1.3 adds seven [SideUser tools](sideusers.md), bringing the configured
 combined channel to 34 tools. SideScreen 0.6 supplies the original free x64/x86
 virtual-input adapter; leases, labeled cursors, private text clipboard and
@@ -26,9 +32,10 @@ The local profile's `PLAYWRIGHT_MCP_EXTENSION_TOKEN` can be supplied in `env`.
 The `chrome` alias points at the same engine. A Patchright/CDP engine is a
 separate profile and must not be the default route to the user's accounts.
 
-Tools: `chrome_status`, `open_url`, `list_tabs`, `select_tab`, `snapshot`, `find`,
-`act`, `steps`, `screenshot`. Selection is internal; it never calls
-Playwright's `bringToFront`. Tabs are tagged by this connection, and unrelated
+Tools: `chrome_ready`, `chrome_status`, `open_url`, `list_tabs`, `select_tab`,
+`close_tab`, `snapshot`, `find`, `act`, `steps`, `screenshot`. Selection changes
+only the active tab within the scoped agent window; it never calls
+Playwright's `bringToFront`. Tabs are tagged by this browser bridge, and unrelated
 human tabs are not adopted. DOM operations resolve a unique target immediately
 before acting. `steps` admits up to 12 known operations, stops on first failure,
 and returns fresh page state. A completed dispatch is not verification of a

@@ -1,7 +1,7 @@
 {
   "port": 18921,
   "engines": {
-    "chrome": { "kind": "chrome", "profile": "" },
+    "chrome": { "kind": "chrome", "profile": "Default" },
     "sidescreen": { "kind": "sidescreen", "directory": "C:/Tools/SideScreenTools" },
     "patchright": {
       "kind": "mcp",

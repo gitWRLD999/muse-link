@@ -26,7 +26,7 @@ export function loadConfig(env = process.env) {
     if (spec.env !== undefined && (!spec.env || typeof spec.env !== 'object' || Array.isArray(spec.env) || Object.values(spec.env).some(v => typeof v !== 'string'))) throw Error(`${name}: env values must be strings`);
     if (spec.cwd !== undefined && (typeof spec.cwd !== 'string' || !path.isAbsolute(spec.cwd))) throw Error(`${name}: cwd must be absolute`);
     if (spec.directory !== undefined && (typeof spec.directory !== 'string' || !path.isAbsolute(spec.directory))) throw Error(`${name}: directory must be absolute`);
-    if (spec.profile !== undefined && typeof spec.profile !== 'string') throw Error(`${name}: profile must be a string`);
+    if (spec.profile !== undefined && (typeof spec.profile !== 'string' || !spec.profile.trim() || /[\\/]|^\.{1,2}$/.test(spec.profile))) throw Error(`${name}: profile must be one directory name`);
     if (spec.aliasOf !== undefined && (!Object.hasOwn(engines,spec.aliasOf) || engines[spec.aliasOf].kind!==spec.kind || engines[spec.aliasOf].aliasOf)) throw Error(`${name}: invalid aliasOf`);
   }
   return {home, configPath, port, stateDir, artifactsDir, engines};
