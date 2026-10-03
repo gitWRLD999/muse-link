@@ -40,6 +40,11 @@ Inspect `chrome_status` before continuing after `stop:true`; do not replay an
 unknown mutating action or restore foreground focus. Subsequent operations use
 the persistent connection. This does not promise focus-free cold attachment.
 
+For the small Chrome account chooser/FedCM bubble, use the whole-window
+`chrome_desktop_observe` and background `chrome_desktop_act` route. It is native
+browser UI, so absence from a webpage snapshot does not mean Chrome is signed
+out or on the wrong monitor. See [desktop input](chrome-desktop.md).
+
 Google password, MFA, passkey, OAuth-consent and security-block pages are
 authentication states, not evidence that the profile is on the wrong monitor.
 Read the actual state and ask for human completion in the same profile when

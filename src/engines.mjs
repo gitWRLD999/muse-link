@@ -40,7 +40,7 @@ export function createEngines(config) {
         env.MUSE_CHROME_BOUNDS=JSON.stringify(status.agentScreen);
       }
     }
-    const c = new Client({name: 'Muse Link', version: '1.3.1'});
+    const c = new Client({name: 'Muse Link', version: '1.4.0'});
     const transport = new StdioClientTransport({command, args, cwd: spec.cwd || config.home, env, stderr: 'inherit'});
     try { await c.connect(transport); } catch (error) { await transport.close(); throw error; }
     clients.set(name, c);
@@ -85,17 +85,21 @@ export function createEngines(config) {
       }
       if(spec.kind==='chrome' && request.method==='list')return {tools:regularChromeTools};
       if(spec.kind==='chrome' && !spec.profile?.trim())throw Error('Pin an explicit regular Chrome profile directory before account access. No automation-profile fallback is allowed.');
-      const c = await client(name, spec);
       if(spec.kind==='chrome') {
-        if(!browsers.has(name))browsers.set(name,createRegularChrome({profile:spec.profile,getProfileInfo:()=>chromeProfileInfo(spec),tokenHash:extensionTokenHash(spec),call:(tool,args)=>c.callTool({name:tool,arguments:args},undefined,{timeout:60000}),getScreen:config.engines.sidescreen?.kind==='sidescreen'?async()=>{
-          const result=await sideScreens.get('sidescreen')({method:'call',tool:'sidescreen_status',arguments:{}});const status=JSON.parse(result.content[0].text);return status.available?status.agentScreen:null;
-        }:undefined}));
         try {
           let guard=fn=>fn();
           if(config.engines.sidescreen?.kind==='sidescreen') {
             if(!sideScreens.has('sidescreen'))sideScreens.set('sidescreen',createSideScreenEngine({directory:config.engines.sidescreen.directory,env:config.engines.sidescreen.env}));
             guard=fn=>sideScreens.get('sidescreen').guard(fn);
           }
+          let c;
+          if(!clients.has(name)) {
+            const attached=await guard(async()=>{c=await client(name,spec);return {content:[]};});
+            if(attached.isError)return {...attached,_meta:{...attached._meta,preparationOnly:true}};
+          }else c=await client(name,spec);
+          if(!browsers.has(name))browsers.set(name,createRegularChrome({side:sideScreens.get('sidescreen'),profile:spec.profile,getProfileInfo:()=>chromeProfileInfo(spec),tokenHash:extensionTokenHash(spec),call:(tool,args)=>c.callTool({name:tool,arguments:args},undefined,{timeout:60000}),getScreen:config.engines.sidescreen?.kind==='sidescreen'?async()=>{
+            const result=await sideScreens.get('sidescreen')({method:'call',tool:'sidescreen_status',arguments:{}});const status=JSON.parse(result.content[0].text);return status.available?status.agentScreen:null;
+          }:undefined}));
           const inspect=['chrome_ready','chrome_status','list_tabs'].includes(request.tool);
           // Cold attachment can activate Chrome. Prepare under its own guard
           // before any requested navigation or form action, without replay.
@@ -111,6 +115,7 @@ export function createEngines(config) {
         }
         catch(error){health.set(name,{ok:false,error:'Chrome connection/action failed; inspect with chrome_status',checkedAt:new Date().toISOString()});throw error;}
       }
+      const c = await client(name, spec);
       if (request.method === 'list') return c.listTools();
       return redactBrowserSecrets(await c.callTool({name: request.tool, arguments: request.arguments || {}}, undefined, {timeout: 120000}));
     },

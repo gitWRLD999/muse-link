@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {chromeDesktopTools,createChromeDesktop} from './chrome-desktop.mjs';
 
 const object=(properties,required=[])=>({type:'object',properties,required,additionalProperties:false});
 const string={type:'string'},locator={role:string,name:string,selector:string};
@@ -12,9 +13,12 @@ export const regularChromeTools=[
   {name:'close_tab',description:'Close one bridge-owned tab, never a human tab. Call chrome_ready to create another if the last agent tab was closed.',inputSchema:object({tab_id:string},['tab_id'])},
   {name:'snapshot',description:'Read a compact accessibility snapshot of the selected agent tab without focus activation.',inputSchema:object({max_chars:{type:'integer',minimum:500,maximum:24000}})},
   {name:'find',description:'Find DOM controls by role/name or CSS. Returns text, count and visibility; password values are never read.',inputSchema:object(locator)},
-  {name:'act',description:'One DOM action on a unique control and fresh page state. Unknown outcomes are never retried. Sign-in/password/MFA/security barriers need human completion, not another profile.',inputSchema:operation},
+  {name:'act',description:'One DOM action on a unique control and fresh page state. Unknown outcomes are never retried. Native Chrome account choosers use chrome_desktop_observe/act; password, MFA, passkey and security barriers need human completion in the same profile.',inputSchema:operation},
   {name:'steps',description:'Up to 12 bounded DOM operations, freshly resolving each control. Stops on failure. Inspect resulting state to verify the authorized workflow.',inputSchema:object({steps:{type:'array',items:operation,minItems:1,maxItems:12}},['steps'])},
   {name:'screenshot',description:'Capture the selected agent tab without activating its window.',inputSchema:object({})}
+  ,...chromeDesktopTools,
+  {name:'chrome_visual_observe',description:'Fresh page screenshot for visual clicking, typing, scrolling and keyboard control through trusted Chrome input. Coordinates are image pixels. Excludes browser toolbar/account bubbles: use chrome_desktop_observe for those.',inputSchema:object({})},
+  {name:'chrome_visual_act',description:'One screenshot-grounded page input without moving the human mouse or taking Windows focus; consumes the observation and verifies document, viewport and display. Returns a fresh image. Never retries. Native Chrome account UI uses chrome_desktop_act.',inputSchema:object({observation_id:string,action:{type:'string',enum:['click','type','press','scroll','move']},x:{type:'number'},y:{type:'number'},text:string,key:{type:'string',enum:['Enter','Tab','Escape','Backspace','Delete','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown']},delta_x:{type:'number'},delta_y:{type:'number'}},['observation_id','action'])}
 ];
 
 export function redactBrowserSecrets(value) {
@@ -31,8 +35,8 @@ export function parseCodeResult(result) {
   return JSON.parse(match[1].trim());
 }
 
-export function createRegularChrome({call,profile,getScreen,getProfileInfo,tokenHash}) {
-  const owner=randomUUID();let selected=randomUUID();
+export function createRegularChrome({call,profile,getScreen,getProfileInfo,tokenHash,side}) {
+  const owner=randomUUID();let selected=randomUUID();const visualObservations=new Map();
   async function run(body,{repair=false,inspection=false}={}) {
     const screen=getScreen?await getScreen():null;
     if(getScreen&&!screen)throw Error('SideScreen display unavailable; browser operation refused. Do not switch profiles.');
@@ -115,7 +119,7 @@ export function createRegularChrome({call,profile,getScreen,getProfileInfo,token
       if(target&&(${repair}||extension(target)))await scope(target,true);
       else if(!${inspection})await scope();
       const tabs=async()=>Promise.all(context.pages().filter(p=>owned(p)).map(async p=>({tab_id:p.__museLinkTab,url:p.url(),title:await p.title(),window:await geometry(p)})));
-      const status=async()=>({engine:'regular_chrome',profile:${JSON.stringify(profile||null)},profilePinned:${!!profile},profileEvidence:${JSON.stringify(profileInfo)},profileTokenMatched:tokenVerified,route:'playwright-extension',ready:!!target&&inside(await geometry(target)),agentScreen:screen,selected_tab:target?target.__museLinkTab:null,tabs:await tabs(),recovery:'chrome_ready',accountAccess:'Profile cookies are shared across windows. Do not move main Chrome or substitute Patchright. Site sign-in/password/MFA or a security block needs human completion.'});
+      const status=async()=>({engine:'regular_chrome',profile:${JSON.stringify(profile||null)},profilePinned:${!!profile},profileEvidence:${JSON.stringify(profileInfo)},profileTokenMatched:tokenVerified,route:'playwright-extension',ready:!!target&&inside(await geometry(target)),agentScreen:screen,selected_tab:target?target.__museLinkTab:null,tabs:await tabs(),recovery:'chrome_ready',accountAccess:'Profile cookies are shared across windows. Native Chrome account choosers use chrome_desktop_observe/act. Do not move main Chrome or substitute Patchright. Password, MFA, passkey and security barriers need human completion in this profile; account choice and access grants require user authorization.'});
       const state=async()=>({tab_id:target.__museLinkTab,url:target.url(),title:await target.title(),window:await geometry(target),snapshot:(await target.locator('body').ariaSnapshot({timeout:5000})).slice(0,12000)});
       const selectVisible=async()=>{
         await target.evaluate(id=>{window.__museLinkTabId=id;},target.__museLinkTab);const c=await control();
@@ -129,6 +133,25 @@ export function createRegularChrome({call,profile,getScreen,getProfileInfo,token
           }
           if(matches.length!==1)throw Error('Agent tab missing or ambiguous');await chrome.tabs.update(matches[0].id,{active:true});return matches[0].id;
         },target.__museLinkTab);return {controller:c,tabId};
+      };
+      const desktopIdentity=async()=>{
+        await scope();const c=await control();await geometry(target);
+        const ids=[];for(const p of context.pages())if(owned(p)||p===controller){await geometry(p);ids.push(p.__museLinkChromeId);}
+        return c.evaluate(async ({tabId,ids,tab,profile})=>{
+          const t=await chrome.tabs.get(tabId),w=await chrome.windows.get(t.windowId),tabs=await chrome.tabs.query({windowId:t.windowId});
+          const frame=await chrome.debugger.sendCommand({tabId},'Page.getFrameTree');
+          const active=tabs.find(p=>p.active);
+          return {tab_id:tab,profile,chrome_window_id:w.id,url:t.url,document:frame.frameTree.frame.loaderId,title:active?.title||t.title,activeOwned:active?.id===t.id,windowOwned:tabs.every(p=>ids.includes(p.id)),window:{x:w.left,y:w.top,width:w.width,height:w.height}};
+        },{tabId:target.__museLinkChromeId,ids,tab:target.__museLinkTab,profile:${JSON.stringify(profile||null)}});
+      };
+      const visualState=async()=>{
+        await scope();const active=await selectVisible();
+        return active.controller.evaluate(async id=>{
+          const send=(method,args={})=>chrome.debugger.sendCommand({tabId:id},method,args);
+          const metrics=await send('Page.getLayoutMetrics'),frame=await send('Page.getFrameTree');
+          const capture=await send('Page.captureScreenshot',{format:'png',fromSurface:true,captureBeyondViewport:false});
+          return {data:capture.data,document:frame.frameTree.frame.loaderId,viewport:metrics.cssVisualViewport,url:frame.frameTree.frame.url};
+        },active.tabId);
       };
       const resolve=step=>{
         if(!!step.selector===!!step.role)throw Error('Provide exactly one of role or selector.');
@@ -150,6 +173,16 @@ export function createRegularChrome({call,profile,getScreen,getProfileInfo,token
     }`;
     return parseCodeResult(await call('browser_run_code_unsafe',{code}));
   }
+  const desktop=side?createChromeDesktop({side,identity:()=>run('return await desktopIdentity();')}):null;
+  async function visualObserve() {
+    const value=await run('return {...await visualState(),window:await geometry(target),tab_id:target.__museLinkTab,display_id:screen?.id};');
+    const bytes=Buffer.from(value.data,'base64');if(bytes.toString('ascii',1,4)!=='PNG')throw Error('Invalid Chrome capture');
+    const id=randomUUID(),width=bytes.readUInt32BE(16),height=bytes.readUInt32BE(20);
+    for(const [key,item] of visualObservations)if(item.expires<Date.now())visualObservations.delete(key);
+    if(visualObservations.size>=64)visualObservations.delete(visualObservations.keys().next().value);
+    const {data,...binding}=value;visualObservations.set(id,{...binding,width,height,expires:Date.now()+120000});
+    return {content:[{type:'text',text:JSON.stringify({observation_id:id,...binding,image:{width,height,coordinates:'image pixels'},route:'chrome-trusted-page-input',expiresInSeconds:120})},{type:'image',mimeType:'image/png',data}]};
+  }
   return async request=>{
     if(request.method==='list')return {tools:regularChromeTools};
     let args=request.arguments||{},tool=request.tool;
@@ -160,6 +193,31 @@ export function createRegularChrome({call,profile,getScreen,getProfileInfo,token
     if(!schema)throw Error('Unknown regular Chrome tool. Use agent list for current schemas, then chrome_ready and open_url; old raw Playwright lists are obsolete.');
     if(Object.keys(args).some(k=>!Object.hasOwn(schema.properties,k)))throw Error('Unsupported Chrome arguments');
     for(const key of schema.required)if(!Object.hasOwn(args,key))throw Error(`Missing ${key}`);
+    if(tool.startsWith('chrome_desktop_')){if(!desktop)throw Error('Chrome desktop controls require SideScreen/CUA.');return desktop({...request,tool,arguments:args});}
+    if(tool==='chrome_visual_observe')return visualObserve();
+    if(tool==='chrome_visual_act'){
+      const observed=visualObservations.get(args.observation_id);visualObservations.delete(args.observation_id);
+      if(!observed||observed.expires<Date.now()||observed.tab_id!==selected)throw Error('Visual observation expired, consumed or belongs to another tab. Observe again.');
+      if(!['click','type','press','scroll','move'].includes(args.action))throw Error('Unsupported visual action');
+      if(['click','scroll','move'].includes(args.action)&&(!Number.isFinite(args.x)||!Number.isFinite(args.y)||args.x<0||args.y<0||args.x>=observed.width||args.y>=observed.height))throw Error('Input coordinates are outside the observed image.');
+      if(args.action==='type'&&(typeof args.text!=='string'||args.text.length>32768||args.text.includes('\0')))throw Error('Invalid text');
+      if(args.action==='press'&&!schema.properties.key.enum.includes(args.key))throw Error('Unsupported page key');
+      if(args.action==='scroll'&&(!Number.isFinite(args.delta_x??0)||!Number.isFinite(args.delta_y??0)||Math.abs(args.delta_x??0)>4000||Math.abs(args.delta_y??0)>4000))throw Error('Invalid scroll distance');
+      await run(`const expected=${JSON.stringify(observed)},input=${JSON.stringify(args)};
+        if(JSON.stringify(await geometry(target))!==JSON.stringify(expected.window)||screen?.id!==expected.display_id)throw Error('Display/window changed. Observe again.');
+        const a=await selectVisible();await a.controller.evaluate(async ({id,expected,input})=>{
+          const send=(method,args={})=>chrome.debugger.sendCommand({tabId:id},method,args);
+          const frame=await send('Page.getFrameTree'),metrics=await send('Page.getLayoutMetrics');
+          if(frame.frameTree.frame.loaderId!==expected.document||frame.frameTree.frame.url!==expected.url||JSON.stringify(metrics.cssVisualViewport)!==JSON.stringify(expected.viewport))throw Error('Document/viewport changed. Observe again.');
+          const x=input.x*expected.viewport.clientWidth/expected.width,y=input.y*expected.viewport.clientHeight/expected.height;
+          if(input.action==='click'){await send('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1});await send('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1});}
+          else if(input.action==='move')await send('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});
+          else if(input.action==='scroll')await send('Input.dispatchMouseEvent',{type:'mouseWheel',x,y,deltaX:input.delta_x??0,deltaY:input.delta_y??0});
+          else if(input.action==='type')await send('Input.insertText',{text:input.text});
+          else {const vk={Enter:13,Tab:9,Escape:27,Backspace:8,Delete:46,ArrowLeft:37,ArrowRight:39,ArrowUp:38,ArrowDown:40,Home:36,End:35,PageUp:33,PageDown:34}[input.key];await send('Input.dispatchKeyEvent',{type:'keyDown',key:input.key,code:input.key,windowsVirtualKeyCode:vk});await send('Input.dispatchKeyEvent',{type:'keyUp',key:input.key,code:input.key,windowsVirtualKeyCode:vk});}
+        },{id:a.tabId,expected,input});return {ok:true};`);
+      return visualObserve();
+    }
     let result;
     if(tool==='chrome_ready'||tool==='chrome_status'||tool==='list_tabs')result=await run('return await status();',{repair:tool==='chrome_ready',inspection:true});
     else if(tool==='open_url'){

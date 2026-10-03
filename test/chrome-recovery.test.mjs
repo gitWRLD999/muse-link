@@ -22,7 +22,14 @@ function fixture({shared=false,wrongToken=false,zeroMetrics=false}={}) {
           localStorage:{getItem:()=>wrongToken?'other-profile-token':'profile-one-token'},
           chrome:{
             tabs:{get:async n=>pages.find(t=>t.id===n),getCurrent:async()=>p,query:async q=>pages.filter(t=>!t.closed&&Object.entries(q).every(([k,v])=>t[k]===v)),remove:async ids=>{for(const n of Array.isArray(ids)?ids:[ids]){const t=pages.find(t=>t.id===n);t.closed=true;}},update:async(n,patch)=>{effects.push(['tab-update',n,patch]);return pages.find(t=>t.id===n);}},
-            debugger:{sendCommand:async({tabId},method,args)=>({result:{value:pages.find(t=>t.id===tabId).document[args.expression.replace('window.','')]}})},
+            debugger:{sendCommand:async({tabId},method,args={})=>{
+              const t=pages.find(t=>t.id===tabId);
+              if(method==='Runtime.evaluate')return {result:{value:t.document[args.expression.replace('window.','')]}};
+              if(method==='Page.getLayoutMetrics')return {cssVisualViewport:{clientWidth:1000,clientHeight:700,pageX:0,pageY:0,scale:1}};
+              if(method==='Page.getFrameTree')return {frameTree:{frame:{loaderId:t.url(),url:t.url()}}};
+              if(method==='Page.captureScreenshot'){const b=Buffer.alloc(24);b.write('PNG',1);b.writeUInt32BE(1000,16);b.writeUInt32BE(700,20);return {data:b.toString('base64')};}
+              effects.push(['cdp-input',tabId,method,args]);return {};
+            }},
             windows:{get:async n=>{const w=windows.get(n);return {left:w.x,top:w.y,width:w.width,height:w.height};},update:async(n,patch)=>{effects.push(['window-update',n,patch]);const w=windows.get(n);if(patch.left!==undefined)Object.assign(w,{x:patch.left,y:patch.top,width:patch.width,height:patch.height});},create:async options=>{effects.push(['window-create',options]);const n=++windowId;windows.set(n,{x:options.left,y:options.top,width:options.width,height:options.height});return {id:n,tabs:[make('about:blank',-1,n)]};}},
             tabGroups:{move:async(group,q)=>{effects.push(['group-move',group,q]);for(const t of pages)if(t.groupId===group)t.windowId=q.windowId;}}
           }};
@@ -47,6 +54,19 @@ test('recover into an inactive SideScreen window while the human window and tab 
   assert.equal(JSON.stringify(f.windows.get(1)),before);assert.equal(f.human.windowId,1);assert.equal(f.human.url(),'https://human.example/private');
   assert.equal(f.effects.find(e=>e[0]==='window-create')[1].focused,false);
   assert.ok(!r.tabs.some(t=>t.url.includes('human.example')));assert.ok(!f.effects.some(e=>e[0]==='window-update'));
+});
+
+test('visual observations cannot be replayed, cross tabs, survive navigation or send out-of-image input',async()=>{
+  const f=fixture();await f.call('chrome_ready');await f.call('open_url',{url:'https://agent.example/'});
+  let obs=await f.call('chrome_visual_observe');await f.call('chrome_visual_act',{observation_id:obs.observation_id,action:'click',x:40,y:50});
+  assert.equal(f.effects.filter(e=>e[0]==='cdp-input').length,2);
+  await assert.rejects(f.call('chrome_visual_act',{observation_id:obs.observation_id,action:'click',x:40,y:50}),/consumed/);
+  obs=await f.call('chrome_visual_observe');await f.call('open_url',{url:'https://agent.example/changed'});
+  await assert.rejects(f.call('chrome_visual_act',{observation_id:obs.observation_id,action:'click',x:40,y:50}),/Document\/viewport/);
+  obs=await f.call('chrome_visual_observe');await assert.rejects(f.call('chrome_visual_act',{observation_id:obs.observation_id,action:'click',x:1000,y:50}),/outside/);
+  obs=await f.call('chrome_visual_observe');await f.call('open_url',{url:'https://agent.example/other',new_tab:true});
+  await assert.rejects(f.call('chrome_visual_act',{observation_id:obs.observation_id,action:'type',text:'wrong tab'}),/another tab/);
+  assert.equal(f.effects.filter(e=>e[0]==='cdp-input').length,2);assert.ok(!f.effects.some(e=>e[0].startsWith('window-')));
 });
 test('a closed selected tab reports recovery and chrome_ready creates its replacement without adopting a human tab',async()=>{
   const f=fixture();const first=await f.call('chrome_ready');await f.call('open_url',{url:'https://agent.example/'});

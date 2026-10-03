@@ -1,6 +1,6 @@
 {
   "name": "@gitwrld999/muse-link",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "description": "Connect agents to a signed-in Windows desktop over SSH and MCP.",
   "type": "module",
   "license": "MIT",

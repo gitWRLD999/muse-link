@@ -3,6 +3,7 @@ import {readFileSync, existsSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {createInterface} from 'node:readline';
+import {runJson} from './process.mjs';
 
 const target={window_handle:{type:'integer',minimum:1},expected_display_id:{type:'string',minLength:1}};
 const selector={type:'object',properties:{label:{type:'string'},role:{type:'string'}},additionalProperties:false};
@@ -130,6 +131,7 @@ export function createSideScreenEngine({directory,run,env={}}={}) {
   };
   // Private broker extension boundary; not an agent tool or global input escape.
   handler.scope=args=>execute({Action:'Scope',WindowHandle:args.window_handle,ExpectedDisplayId:args.expected_display_id});
+  handler.chromeShield=binding=>runJson({command:path.join(resolveSideScreenDirectory(directory),'SideScreen.ChromeFocus.exe'),env},{WindowHandle:binding.target.window_handle,ExpectedDisplayId:binding.target.expected_display_id,ExpectedProcessId:binding.scoped.processId,ExpectedProcessStartTicks:binding.scoped.processStartTicks});
   handler.pointer=args=>execute({Action:'SideCursorAct',WindowHandle:args.window_handle,ExpectedDisplayId:args.expected_display_id,ObservationId:args.observation_id,Tool:args.operation,Arguments:{x:args.x,y:args.y,button:args.button||'left'}});
   handler.virtual=args=>execute({Action:'VirtualAct',WindowHandle:args.window_handle,ExpectedDisplayId:args.expected_display_id,ObservationId:args.observation_id,Tool:args.operation,Arguments:args.arguments,CursorId:args.cursor_id,CursorLabel:args.label});
   handler.release=(scope,cursorId)=>execute({Action:'VirtualRelease',WindowHandle:scope.windowHandle,ExpectedDisplayId:scope.displayId,ExpectedProcessId:scope.processId,ExpectedProcessStartTicks:scope.processStartTicks,CursorId:cursorId});
