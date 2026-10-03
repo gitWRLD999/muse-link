@@ -39,7 +39,7 @@ try {
     await call(client,'sideuser_clipboard',{...s,text:`Muse ${i} café Ω`});o=(await call(client,'sideuser_observe',s)).data;const token=o.state.elements.find(e=>e.label==='Virtual text'&&e.role==='Edit')?.element_token;check(!!token,'Native edit token grounded '+i);
     const pasted=(await call(client,'sideuser_act',{...s,observation_id:o.observationId,operation:'paste',arguments:{element_token:token}})).data;check(pasted.ok&&entry.state().text===`Muse ${i} café Ω`,'Private clipboard reaches real native edit '+i);
     const macro={...s,request_id:'select-and-replace',steps:[{selector:{label:'Virtual text',role:'Edit'},operation:'press',arguments:{key:'A',modifiers:['Control']}},{selector:{label:'Virtual text',role:'Edit'},operation:'type',arguments:{text:`Macro ${i}`}}]};
-    const ran=(await call(client,'sideuser_run',macro)).data;check(ran.ok&&ran.completed===2&&entry.state().text===`Macro ${i}`,'Named macro uses fresh controls and virtual modifiers '+i);
+    const ran=(await call(client,'sideuser_run',macro)).data;check(ran.ok&&ran.completed===2&&entry.state().text===`Macro ${i}`&&entry.state().asyncControl,'Named macro uses fresh controls and virtual modifiers '+i);
     await refused(()=>call(client,'sideuser_run',macro),'Macro retry ID prevents duplicate input '+i);
     check((await call(client,'sideuser_status')).data.sessions.length===1,'Status lists only this connection’s window '+i);
   }
