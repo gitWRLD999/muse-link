@@ -11,7 +11,7 @@ export async function startMcp(config, engine) {
     desktop = list.tools.length > 0 && list.tools.every(tool => typeof tool === 'string');
     return list;
   }
-  const server = new Server({name: `muse-link-${engine}`, version: '1.1.0'}, {capabilities: {tools: {}}});
+  const server = new Server({name: `muse-link-${engine}`, version: '1.2.0'}, {capabilities: {tools: {}}});
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const list = await listTools();
     // Recognize the legacy desktop JSON adapter without copying its private source.

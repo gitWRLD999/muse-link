@@ -15,7 +15,7 @@ const server=http.createServer((req,res)=>{
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const url=`http://127.0.0.1:${server.address().port}/`;
-const client=new Client({name:'Simulated Muse',version:'1.1.0'});
+const client=new Client({name:'Simulated Muse',version:'1.2.0'});
 const transport=new StdioClientTransport({command:process.execPath,args:[process.env.MUSE_CHANNEL_CLI||path.resolve('bin/muse-link.mjs'),'mcp','agent'],stderr:'inherit'});
 function check(value,name){assert.ok(value,name);report.checks.push(name);}
 async function call(name,args={}) {
@@ -27,7 +27,7 @@ async function call(name,args={}) {
 }
 try {
   await client.connect(transport);
-  const tools=await client.listTools();check(tools.tools.length===17,'Combined channel discovers 9 browser + 8 desktop tools');
+  const tools=await client.listTools();const extra=tools.tools.some(t=>t.name==='agent_tools_status')?10:0;check(tools.tools.length===17+extra,'Combined channel discovers 9 browser + 8 desktop tools and configured assistance tools');
   const status=await call('chrome_status');check(!status.result.isError,'Pinned Chrome connection is ready');check(status.data.profile==='Profile 1','Regular Chrome is explicitly Profile 1');
   const opened=await call('open_url',{url});check(!opened.result.isError && opened.data.title===pageTitle,'Navigate directly through the Muse channel');
   check(opened.result._meta.focus.Preserved,'Browser navigation preserves foreground and keyboard focus');

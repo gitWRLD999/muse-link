@@ -18,7 +18,9 @@ export function loadConfig(env = process.env) {
   const engines = config.engines ?? {chrome: {kind: 'chrome'}, sidescreen: {kind: 'sidescreen'}};
   if (!engines || typeof engines !== 'object' || Array.isArray(engines)) throw Error('engines must be an object');
   for (const [name, spec] of Object.entries(engines)) {
-    if (!/^[a-z][a-z0-9_-]{0,63}$/.test(name) || !spec || !['chrome', 'mcp', 'desktop', 'sidescreen', 'agent'].includes(spec.kind)) throw Error(`Invalid engine: ${name}`);
+    if (!/^[a-z][a-z0-9_-]{0,63}$/.test(name) || !spec || !['chrome', 'mcp', 'desktop', 'sidescreen', 'agent', 'assist'].includes(spec.kind)) throw Error(`Invalid engine: ${name}`);
+    if(spec.kind==='assist')for(const field of ['winappBinary','python','ufoDirectory','omniDirectory','modelFile','ocrDirectory'])if(typeof spec[field]!=='string'||!path.isAbsolute(spec[field]))throw Error(`${name}: ${field} must be absolute`);
+    if(spec.kind==='agent'&&spec.assist&&engines[spec.assist]?.kind!=='assist')throw Error(`${name}: invalid assist engine`);
     if (['mcp', 'desktop'].includes(spec.kind) && (typeof spec.command !== 'string' || !spec.command.trim())) throw Error(`${name}: command is required`);
     if (spec.args !== undefined && (!Array.isArray(spec.args) || spec.args.some(a => typeof a !== 'string'))) throw Error(`${name}: args must be strings`);
     if (spec.env !== undefined && (!spec.env || typeof spec.env !== 'object' || Array.isArray(spec.env) || Object.values(spec.env).some(v => typeof v !== 'string'))) throw Error(`${name}: env values must be strings`);

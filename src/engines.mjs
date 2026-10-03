@@ -6,12 +6,20 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createSideScreenEngine} from './sidescreen.mjs';
 import {runJson} from './process.mjs';
 import {createRegularChrome, redactBrowserSecrets} from './browser.mjs';
+import {createAssistEngine} from './assist.mjs';
+
+export function engineForTool(config,request) {
+  const spec=config.engines[request.engine];
+  if(spec?.kind!=='agent')return spec?.aliasOf||request.engine;
+  if(/^(winapp_|ufo_|omniparser_|sidecursor_|mousemux_|agent_tools_)/.test(request.tool||''))return spec.assist||'assist';
+  return request.tool?.startsWith('sidescreen_')?(spec.desktop||'sidescreen'):(spec.browser||'regular_chrome');
+}
 
 export const desktopActions = ['/position', '/screen_size', '/windows', '/activate_window', '/screenshot', '/move', '/click', '/drag', '/scroll', '/type', '/press', '/hotkey', '/key_down', '/key_up', '/pixel', '/clipboard/set', '/clipboard/get'];
 const require = createRequire(import.meta.url);
 
 export function createEngines(config) {
-  const clients = new Map(), sideScreens = new Map(), browsers = new Map(), health = new Map();
+  const clients = new Map(), sideScreens = new Map(), browsers = new Map(), assists = new Map(), health = new Map();
   async function client(name, spec) {
     if (clients.has(name)) return clients.get(name);
     let command = spec.command === 'node' ? process.execPath : spec.command;
@@ -30,7 +38,7 @@ export function createEngines(config) {
         env.MUSE_CHROME_BOUNDS=JSON.stringify(status.agentScreen);
       }
     }
-    const c = new Client({name: 'Muse Link', version: '1.1.0'});
+    const c = new Client({name: 'Muse Link', version: '1.2.0'});
     const transport = new StdioClientTransport({command, args, cwd: spec.cwd || config.home, env, stderr: 'inherit'});
     try { await c.connect(transport); } catch (error) { await transport.close(); throw error; }
     clients.set(name, c);
@@ -49,8 +57,15 @@ export function createEngines(config) {
       if(spec.aliasOf)spec=config.engines[name];
       if(spec.kind==='agent') {
         const browser=spec.browser||'regular_chrome',desktop=spec.desktop||'sidescreen';
-        if(request.method==='list')return {tools:[...(await engines.dispatch({engine:browser,method:'list'})).tools,...(await engines.dispatch({engine:desktop,method:'list'})).tools]};
-        return engines.dispatch({...request,engine:request.tool.startsWith('sidescreen_')?desktop:browser});
+        if(request.method==='list')return {tools:[...(await engines.dispatch({engine:browser,method:'list'})).tools,...(await engines.dispatch({engine:desktop,method:'list'})).tools,...(spec.assist?(await engines.dispatch({engine:spec.assist,method:'list'})).tools:[])]};
+        return engines.dispatch({...request,engine:engineForTool(config,request)});
+      }
+      if(spec.kind==='assist') {
+        const sideName=spec.desktop||'sidescreen',sideSpec=config.engines[sideName];
+        if(sideSpec?.kind!=='sidescreen')throw Error('Agent assistance requires SideScreen');
+        if(!sideScreens.has(sideName))sideScreens.set(sideName,createSideScreenEngine({directory:sideSpec.directory,env:sideSpec.env}));
+        if(!assists.has(name))assists.set(name,createAssistEngine(spec,sideScreens.get(sideName)));
+        return assists.get(name)(request);
       }
       if (spec.kind === 'sidescreen') {
         if (!sideScreens.has(name)) sideScreens.set(name, createSideScreenEngine({directory: spec.directory,env:spec.env}));
@@ -81,7 +96,7 @@ export function createEngines(config) {
       if (request.method === 'list') return c.listTools();
       return redactBrowserSecrets(await c.callTool({name: request.tool, arguments: request.arguments || {}}, undefined, {timeout: 120000}));
     },
-    async close() {for(const side of sideScreens.values())side.close();await Promise.allSettled([...clients.values()].map(c => c.close())); }
+    async close() {for(const assist of assists.values())assist.close();for(const side of sideScreens.values())side.close();await Promise.allSettled([...clients.values()].map(c => c.close())); }
   };
   return engines;
 }

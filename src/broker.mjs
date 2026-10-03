@@ -4,7 +4,7 @@ import {mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync} from 'node:fs
 import {execFileSync} from 'node:child_process';
 import path from 'node:path';
 import {performance} from 'node:perf_hooks';
-import {createEngines} from './engines.mjs';
+import {createEngines,engineForTool} from './engines.mjs';
 
 export function authorized(req, token, port) {
   if (req.headers.origin !== undefined) return false;
@@ -60,12 +60,9 @@ export async function startBroker(config) {
   let stopping = false;
   const queues=new Map(), recent=[];
   function resource(request) {
-    const spec=config.engines[request.engine];
-    if(spec?.kind==='agent') {
-      const name=request.tool?.startsWith('sidescreen_')?(spec.desktop||'sidescreen'):(spec.browser||'regular_chrome');
-      return config.engines[name]?.aliasOf||name;
-    }
-    return spec?.aliasOf||request.engine;
+    const name=engineForTool(config,request),spec=config.engines[name];
+    // All assistance operations share the desktop queue; scopes/tokens cannot race.
+    return spec?.kind==='assist'?(spec.desktop||'sidescreen'):(spec?.aliasOf||name);
   }
   const dispatch = request => {
     const queued=performance.now(),key=resource(request);

@@ -87,3 +87,16 @@ non-UI checks, 61 CUA live checks, 37 native background checks and 12 adapter
 checks. The initial extension attachment's focus change was detected separately.
 This local simulation does not verify Muse's remote SSH client or guarantee
 identical performance and compatibility to ChatGPT's hosted computer-use tools.
+
+Muse Link 1.2 adds the ten optional [Windows app and visual tools](agent-extras.md).
+Its installed MCP proxy passed 42 further live checks for pointer movement,
+raw canvas clicks, native/WPF control invocation, preview markers, winapp,
+CPU vision and exact-window Office-compatible APIs. The Node suite now passes
+22 tests and SideScreen 0.5 passes 26 non-UI checks. Other version 1.1 measures
+above describe the earlier browser/native channel run.
+The 32-check browser/native/WPF suite also passed again through the installed
+1.2 proxy after its first attachment. Direct navigation took 1.8 seconds and
+three DOM operations took 1.3 seconds in that run. First attachment after the
+broker update changed focus and was detected separately; later actions preserved
+foreground/keyboard focus. `node test/run-live-agent.mjs` launches the two owned
+desktop fixtures and runs this opt-in suite.

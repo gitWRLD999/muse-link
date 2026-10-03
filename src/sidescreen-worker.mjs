@@ -128,5 +128,8 @@ export function createSideScreenEngine({directory,run,env={}}={}) {
     if(error)throw error;
     return {...result,_meta:{...result._meta,focus:after.focus}};
   };
+  // Private broker extension boundary; not an agent tool or global input escape.
+  handler.scope=args=>execute({Action:'Scope',WindowHandle:args.window_handle,ExpectedDisplayId:args.expected_display_id});
+  handler.pointer=args=>execute({Action:'SideCursorAct',WindowHandle:args.window_handle,ExpectedDisplayId:args.expected_display_id,ObservationId:args.observation_id,Tool:args.operation,Arguments:{x:args.x,y:args.y,button:args.button||'left'}});
   handler.close=()=>stop(Error('SideScreen shutting down'));return handler;
 }
