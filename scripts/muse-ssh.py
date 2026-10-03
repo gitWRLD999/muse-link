@@ -27,7 +27,7 @@ def ssh_command(args):
     if args.mcp and not re.fullmatch(r'[a-z][a-z0-9_-]{0,63}', args.mcp):
         raise ValueError('Invalid MCP engine')
     remote = windows_argument(args.node) + ' ' + windows_argument(args.remote_script)
-    remote += ' mcp ' + args.mcp if args.mcp else ' --stdin'
+    remote += ' mcp ' + args.mcp if args.mcp else (' channel' if getattr(args, 'channel', False) else ' --stdin')
     return command + [args.host, remote]
 
 
@@ -39,12 +39,15 @@ def main():
     parser.add_argument('--node', default='node', help='Windows Node executable')
     parser.add_argument('--remote-script', required=True, help='Absolute Windows bin/muse-link.mjs path')
     parser.add_argument('--mcp', metavar='ENGINE', help='Forward MCP stdio instead of a single CLI request')
+    parser.add_argument('--channel', action='store_true', help='Forward persistent JSON-lines stdio over one SSH connection')
     parser.add_argument('engine', nargs='?', default='status')
     parser.add_argument('action', nargs='?', default='list')
     parser.add_argument('arguments', nargs='?', default='{}', help="JSON, or '-' to read stdin")
     args = parser.parse_args()
     command = ssh_command(args)
-    if args.mcp:
+    if args.mcp or args.channel:
+        if args.mcp and args.channel:
+            raise ValueError('Choose --mcp or --channel')
         return subprocess.run(command).returncode
     payload = {'method': 'status'} if args.engine == 'status' else {
         'engine': args.engine, 'method': 'list' if args.action == 'list' else 'call',

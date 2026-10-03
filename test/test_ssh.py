@@ -26,6 +26,9 @@ class SshTests(unittest.TestCase):
     def test_mcp_stream_command(self):
         self.assertTrue(module.ssh_command(self.options(mcp='sidescreen'))[-1].endswith(' mcp sidescreen'))
 
+    def test_persistent_json_channel(self):
+        self.assertTrue(module.ssh_command(self.options(channel=True))[-1].endswith(' channel'))
+
     def test_shell_expansions_and_host_options_are_refused(self):
         for field, value in [('remote_script', 'C:/%SECRET%/tool'), ('remote_script', 'x"&whoami'), ('node', 'node|cmd'), ('host', '-oProxyCommand=evil'), ('mcp', 'chrome&cmd')]:
             with self.subTest(field=field):

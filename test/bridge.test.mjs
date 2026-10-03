@@ -106,9 +106,10 @@ test('MCP stdio proxy forwards real tools and preserves tool errors', async t =>
 test('SideScreen preserves scoped observations and refuses generic desktop input', async () => {
   const calls = [];
   const engine = createSideScreenEngine({run: async request => {calls.push(request); return {ok: true};}});
-  assert.equal((await engine({method: 'list'})).tools.length, 4);
+  assert.equal((await engine({method: 'list'})).tools.length, 8);
   await engine({method: 'call', tool: 'sidescreen_observe', arguments: {window_handle: 123, expected_display_id: 'DISPLAY5'}});
   assert.equal(calls[0].Action, 'CuaObserve'); assert.equal(calls[0].WindowHandle, 123);
+  assert.equal(calls[0].IncludeScreenshot,false);
   await assert.rejects(engine({method: 'call', tool: 'desktop_action', arguments: {}}), /Unknown SideScreen tool/);
   await assert.rejects(engine({method: 'call', tool: 'sidescreen_act', arguments: {window_handle: 123}}), /Missing/);
   assert.equal(calls.length, 1);

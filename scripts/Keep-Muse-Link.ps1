@@ -1,5 +1,5 @@
 param(
-    [string]$HomeDirectory = (Join-Path $env:LOCALAPPDATA 'MuseLink'),
+    [string]$HomeDirectory = (Join-Path $env:USERPROFILE 'AgentTools\MuseLink'),
     [string]$NodeExecutable = 'node.exe'
 )
 $ErrorActionPreference = 'Stop'

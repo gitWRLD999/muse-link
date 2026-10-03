@@ -1,7 +1,9 @@
 {
   "port": 18921,
   "engines": {
-    "chrome": { "kind": "chrome", "profile": "" },
+    "agent": { "kind": "agent" },
+    "regular_chrome": { "kind": "chrome", "profile": "Default" },
+    "chrome": { "kind": "chrome", "aliasOf": "regular_chrome" },
     "sidescreen": { "kind": "sidescreen" }
   }
 }

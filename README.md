@@ -16,10 +16,14 @@ flowchart LR
 
 ## What is included
 
+For the current tool contract, performance timings and focus limits, read
+[the agent channel guide](docs/agent-channel.md). Websites use your pinned
+regular Chrome profile; the default agent channel excludes global desktop input.
+
 - CLI and MCP stdio proxy, including an agent-side Python SSH helper.
-- A loopback-only broker with per-run credentials, protected local state, and serialized engine calls.
+- A loopback-only broker with per-run credentials, protected local state, and calls serialized per engine, with aliases sharing a queue.
 - A Chrome adapter using pinned Playwright MCP in extension mode.
-- The four scoped SideScreen tools: status, windows, observe, and act.
+- A combined `agent` MCP channel with nine regular Chrome tools and eight scoped SideScreen tools.
 - Configurable external MCP engines and the existing desktop JSON adapter protocol.
 - Windows sign-in startup, restart supervision, pause/resume scripts, and transport tests.
 
@@ -30,7 +34,7 @@ No keys, hostnames, personal endpoints, browser profiles, OpenClaw workspace fil
 Use Node.js 22 or later and Git. In the signed-in desktop's PowerShell:
 
 ```powershell
-$package = Join-Path $env:LOCALAPPDATA 'MuseLinkPackage'
+$package = Join-Path $env:USERPROFILE 'AgentTools\MuseLinkPackage'
 git clone https://github.com/gitWRLD999/muse-link.git $package
 Set-Location -LiteralPath $package
 npm ci
@@ -38,12 +42,12 @@ node .\bin\muse-link.mjs init
 node .\bin\muse-link.mjs serve
 ```
 
-The config defaults to `%LOCALAPPDATA%\MuseLink\config.json`, with credentials in its `state` directory and CLI screenshots in `artifacts`. Ctrl+C stops a manually started broker. A Windows broker providing desktop/browser adapters must run in a signed-in interactive session, rather than an SSH service session.
+The config defaults to `%USERPROFILE%\AgentTools\MuseLink\config.json`, with credentials in its `state` directory and CLI screenshots in `artifacts`. Ctrl+C stops a manually started broker. A Windows broker providing desktop/browser adapters must run in a signed-in interactive session, rather than an SSH service session.
 
-You can also install the [v1.0.0 npm package archive](https://github.com/gitWRLD999/muse-link/releases/download/v1.0.0/gitwrld999-muse-link-1.0.0.tgz):
+You can also install the [v1.1.0 npm package archive](https://github.com/gitWRLD999/muse-link/releases/download/v1.1.0/gitwrld999-muse-link-1.1.0.tgz):
 
 ```powershell
-npm install -g https://github.com/gitWRLD999/muse-link/releases/download/v1.0.0/gitwrld999-muse-link-1.0.0.tgz
+npm install -g https://github.com/gitWRLD999/muse-link/releases/download/v1.1.0/gitwrld999-muse-link-1.1.0.tgz
 muse-link init
 muse-link serve
 ```
@@ -54,11 +58,11 @@ The package is distributed on GitHub Releases; it has not been published to the 
 
 Install the [Playwright MCP Bridge extension](https://chromewebstore.google.com/detail/playwright-mcp-bridge/mmlmfjhmonkocbjadbfplnigmagldckm) in the Chrome profile you want the agent to use. Chrome asks you to select a tab when attaching. The `chrome` engine uses extension mode and does not copy your profile or launch Chrome with a debugging port. See [Playwright MCP's browser extension instructions](https://github.com/microsoft/playwright-mcp#browser-extension).
 
-In `config.json`, set `chrome.profile` to a profile directory name such as `Default` or `Profile 1` if necessary. This is a local setting. Keep browser consent and credentials on the PC.
+In `config.json`, pin `regular_chrome.profile` to the profile directory shown in `chrome://version`, such as `Default` or `Profile 1`. The `chrome` alias uses this same connection. This is a local setting. Keep browser consent and credentials on the PC.
 
 ```powershell
 node .\bin\muse-link.mjs status
-node .\bin\muse-link.mjs chrome list
+node .\bin\muse-link.mjs agent list
 ```
 
 ## Connect Muse or another agent
@@ -80,7 +84,7 @@ python3 scripts/muse-ssh.py --host agent-pc \
   --remote-script 'C:/Tools/muse-link/bin/muse-link.mjs' chrome list
 ```
 
-To use MCP, copy [examples/mcp-ssh.json](examples/mcp-ssh.json) into your MCP client's configuration and replace the alias and remote script path. Each configured server forwards one engine's tools. This works with a client that can launch an SSH stdio transport; it does not add a new native computer-use capability to a hosted chat interface.
+To use MCP, copy [examples/mcp-ssh.json](examples/mcp-ssh.json) into your MCP client's configuration and replace the alias and remote script path. The recommended `mcp agent` server combines regular Chrome and scoped SideScreen over one persistent SSH connection. This works with a client that can launch an SSH stdio transport; it does not add a new native computer-use capability to a hosted chat interface.
 
 The Python helper also supports MCP streaming:
 
@@ -129,7 +133,7 @@ These scripts use the default home or `-HomeDirectory`. `Install-Startup.ps1` re
 | `desktop` | One JSON request on stdin, one JSON response on stdout |
 | `sidescreen` | Installed `SideScreen.Cua.exe`; optional absolute `directory` |
 
-The default SideScreen directory is `%LOCALAPPDATA%\SideScreenTools`; `SIDESCREEN_HOME` can override it. Install SideScreen and its optional CUA integration separately. Discover the display and window handles using status/windows, then observe before each action. SideScreen enforces target containment and observation expiry; Windows focus is still shared, and supported background input is not universal desktop isolation. The unscoped legacy desktop adapter can steal focus.
+The preferred SideScreen directory is `%USERPROFILE%\AgentTools\SideScreen`; `SIDESCREEN_HOME` can override it. The old AppData installation remains a fallback. Install SideScreen and its optional CUA integration separately. Discover the display and window handles using status/windows, then observe before each action. SideScreen enforces target containment and observation expiry; Windows focus is still shared, and supported background input is not universal desktop isolation. The unscoped legacy desktop adapter can steal focus.
 
 For the desktop protocol, requests look like `{"action":"/windows","arguments":{}}`; replies look like `{"ok":true,"result":...}`. `/screenshot` may return `result.png_base64`. Only the published action allowlist is exposed. External MCP engine schemas pass through unchanged. Installed OpenClaw tools retain their own dependencies and permissions.
 

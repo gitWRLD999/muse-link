@@ -3,6 +3,7 @@ import {randomBytes, timingSafeEqual} from 'node:crypto';
 import {mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import path from 'node:path';
+import {performance} from 'node:perf_hooks';
 import {createEngines} from './engines.mjs';
 
 export function authorized(req, token, port) {
@@ -57,11 +58,30 @@ export async function startBroker(config) {
   const token = randomBytes(32).toString('hex');
   const engines = createEngines(config);
   let stopping = false;
-  const dispatch = serial(request => {
-    if (stopping) throw Error('Broker is stopping');
-    return engines.dispatch(request);
-  });
-  const server = http.createServer(makeHandler(token, config.port, request => request.method === 'status' ? engines.status() : dispatch(request)));
+  const queues=new Map(), recent=[];
+  function resource(request) {
+    const spec=config.engines[request.engine];
+    if(spec?.kind==='agent') {
+      const name=request.tool?.startsWith('sidescreen_')?(spec.desktop||'sidescreen'):(spec.browser||'regular_chrome');
+      return config.engines[name]?.aliasOf||name;
+    }
+    return spec?.aliasOf||request.engine;
+  }
+  const dispatch = request => {
+    const queued=performance.now(),key=resource(request);
+    if(!queues.has(key))queues.set(key,serial(async (request,queued)=>{
+      if(stopping)throw Error('Broker is stopping');
+      const started=performance.now();
+      try {
+        const result=await engines.dispatch(request),ended=performance.now();
+        const timing={engine:request.engine,tool:request.tool||request.method,queueWaitMs:Math.round(started-queued),executionMs:Math.round(ended-started),totalMs:Math.round(ended-queued)};
+        recent.push({...timing,ok:!result.isError});if(recent.length>50)recent.shift();
+        return {...result,_meta:{...result._meta,museLink:timing}};
+      }catch(error){recent.push({engine:request.engine,tool:request.tool||request.method,ok:false,totalMs:Math.round(performance.now()-queued)});if(recent.length>50)recent.shift();throw error;}
+    }));
+    return queues.get(key)(request,queued);
+  };
+  const server = http.createServer(makeHandler(token, config.port, request => request.method === 'status' ? {...engines.status(),recentTimings:recent} : dispatch(request)));
   server.requestTimeout = 150000;
   server.headersTimeout = 10000;
   await new Promise((resolve, reject) => {
