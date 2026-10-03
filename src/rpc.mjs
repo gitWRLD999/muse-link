@@ -1,5 +1,7 @@
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
+import {randomUUID} from 'node:crypto';
+const callerId=randomUUID();
 
 export async function rpc(config, request) {
   let token;
@@ -7,7 +9,7 @@ export async function rpc(config, request) {
   catch { throw Error('No broker token. Start Muse Link in the signed-in Windows session.'); }
   const response = await fetch(`http://127.0.0.1:${config.port}/rpc`, {
     method: 'POST', headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`},
-    body: JSON.stringify(request), signal: AbortSignal.timeout(150000)
+    body: JSON.stringify({callerId,...request}), signal: AbortSignal.timeout(150000)
   });
   const result = await response.json();
   if (!response.ok) throw Error(result.error || `HTTP ${response.status}`);

@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import {createSideUsers,sideUserTools} from './sideusers.mjs';
 
 const exec=promisify(execFile);
 const target={window_handle:{type:'integer',minimum:1},expected_display_id:{type:'string',minLength:1}};
@@ -66,6 +67,7 @@ export function pythonWorker(spec) {
   return {call,close};
 }
 export function createAssistEngine(spec,side,{runWinapp,worker,mousemuxProbe}={}) {
+  const users=side.users||(side.users=createSideUsers(side,{validate,sameScope}));
   const apps=worker||pythonWorker(spec), observations=new Map();
   let muxClient,muxTransport;
   async function probeMux() {
@@ -88,7 +90,9 @@ export function createAssistEngine(spec,side,{runWinapp,worker,mousemuxProbe}={}
     });
   }
   const handler=async request=>{
-    if(request.method==='list')return {tools:assistTools};
+    if(request.method==='list')return {tools:[...assistTools,...sideUserTools]};
+    if(request.tool?.startsWith('sideuser_'))return users.handle(request);
+    await users.assertAccess(request);
     const tool=assistTools.find(t=>t.name===request.tool);if(!tool)throw Error('Unknown agent assistance tool');
     const args=request.arguments||{};validate(tool.inputSchema,args);
     if(request.tool==='mousemux_status')return result(await probeMux());
@@ -134,5 +138,5 @@ export function createAssistEngine(spec,side,{runWinapp,worker,mousemuxProbe}={}
       return apps.call({action:request.tool,hwnd:args.window_handle,document_id:previous.documentId,...args});
     });
   };
-  handler.close=()=>{apps.close();muxClient?.close().catch(()=>{});};return handler;
+  handler.close=async()=>{await users.close();apps.close();await muxClient?.close().catch(()=>{});};return handler;
 }

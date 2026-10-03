@@ -27,7 +27,7 @@ async function call(name,args={}) {
 }
 try {
   await client.connect(transport);
-  const tools=await client.listTools();const extra=tools.tools.some(t=>t.name==='agent_tools_status')?10:0;check(tools.tools.length===17+extra,'Combined channel discovers 9 browser + 8 desktop tools and configured assistance tools');
+  const tools=await client.listTools();const extra=tools.tools.some(t=>t.name==='agent_tools_status')?17:0;check(tools.tools.length===17+extra,'Combined channel discovers 9 browser + 8 desktop tools and configured assistance tools');
   const status=await call('chrome_status');check(!status.result.isError,'Pinned Chrome connection is ready');check(status.data.profile==='Profile 1','Regular Chrome is explicitly Profile 1');
   const opened=await call('open_url',{url});check(!opened.result.isError && opened.data.title===pageTitle,'Navigate directly through the Muse channel');
   check(opened.result._meta.focus.Preserved,'Browser navigation preserves foreground and keyboard focus');

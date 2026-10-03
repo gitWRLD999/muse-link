@@ -25,6 +25,7 @@ regular Chrome profile; the default agent channel excludes global desktop input.
 - A Chrome adapter using pinned Playwright MCP in extension mode.
 - A combined `agent` MCP channel with nine regular Chrome tools and eight scoped SideScreen tools.
 - Ten optional [Windows app, visual and software pointer tools](docs/agent-extras.md), including Microsoft winapp, UFO app APIs and local OmniParser detection/OCR.
+- Seven [SideUser tools](docs/sideusers.md) for per-agent window leases, original free x64/x86 virtual input, labeled cursors, private text clipboards and named macros. Desktop operations are serialized; independent session state prevents agents from mixing their window targets and observations.
 - Configurable external MCP engines and the existing desktop JSON adapter protocol.
 - Windows sign-in startup, restart supervision, pause/resume scripts, and transport tests.
 
@@ -45,10 +46,10 @@ node .\bin\muse-link.mjs serve
 
 The config defaults to `%USERPROFILE%\AgentTools\MuseLink\config.json`, with credentials in its `state` directory and CLI screenshots in `artifacts`. Ctrl+C stops a manually started broker. A Windows broker providing desktop/browser adapters must run in a signed-in interactive session, rather than an SSH service session.
 
-You can also install the [v1.2.0 npm package archive](https://github.com/gitWRLD999/muse-link/releases/download/v1.2.0/gitwrld999-muse-link-1.2.0.tgz):
+You can also install the [v1.3.0 npm package archive](https://github.com/gitWRLD999/muse-link/releases/download/v1.3.0/gitwrld999-muse-link-1.3.0.tgz):
 
 ```powershell
-npm install -g https://github.com/gitWRLD999/muse-link/releases/download/v1.2.0/gitwrld999-muse-link-1.2.0.tgz
+npm install -g https://github.com/gitWRLD999/muse-link/releases/download/v1.3.0/gitwrld999-muse-link-1.3.0.tgz
 muse-link init
 muse-link serve
 ```

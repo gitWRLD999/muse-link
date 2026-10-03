@@ -1,5 +1,19 @@
 # Fast agent channel
 
+Version 1.3 adds seven [SideUser tools](sideusers.md), bringing the configured
+combined channel to 34 tools. SideScreen 0.6 supplies the original free x64/x86
+virtual-input adapter; leases, labeled cursors, private text clipboard and
+named macros belong to each persistent MCP connection. The installed proxy
+passed 31 live two-client checks, and the native adapter passed 118 checks
+against actual app handlers. The Node suite passes 28 tests. Local
+act-and-observe had a 1.25-second median; a two-step keyboard macro took
+3.2–3.8 seconds in one run, excluding model/network time. Universal app
+compatibility and hosted ChatGPT backend integration are not established.
+The installed proxy also passed the existing 42 app/vision checks and the
+32 regular Chrome/native/WPF checks again. A fresh Chrome extension attachment
+changed focus and was stopped by the guard before that browser suite; subsequent
+tested actions preserved it.
+
 Use one long-lived `muse-link mcp agent` process, preferably forwarded over one
 verified SSH stdio connection. The Windows broker survives client disconnects.
 Use browser DOM tools for websites, scoped accessibility for native apps, and

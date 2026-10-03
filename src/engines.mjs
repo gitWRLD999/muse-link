@@ -11,7 +11,7 @@ import {createAssistEngine} from './assist.mjs';
 export function engineForTool(config,request) {
   const spec=config.engines[request.engine];
   if(spec?.kind!=='agent')return spec?.aliasOf||request.engine;
-  if(/^(winapp_|ufo_|omniparser_|sidecursor_|mousemux_|agent_tools_)/.test(request.tool||''))return spec.assist||'assist';
+  if(/^(winapp_|ufo_|omniparser_|sidecursor_|sideuser_|mousemux_|agent_tools_)/.test(request.tool||''))return spec.assist||'assist';
   return request.tool?.startsWith('sidescreen_')?(spec.desktop||'sidescreen'):(spec.browser||'regular_chrome');
 }
 
@@ -69,6 +69,7 @@ export function createEngines(config) {
       }
       if (spec.kind === 'sidescreen') {
         if (!sideScreens.has(name)) sideScreens.set(name, createSideScreenEngine({directory: spec.directory,env:spec.env}));
+        await sideScreens.get(name).users?.assertAccess(request);
         const result=await sideScreens.get(name)(request);
         if(request.method==='call'){const data=JSON.parse(result.content[0].text);health.set(name,{ok:data.ok!==false,ready:data.ready??(data.ok!==false),error:data.error||data.healthError||null,checkedAt:new Date().toISOString()});}
         return result;
@@ -96,7 +97,7 @@ export function createEngines(config) {
       if (request.method === 'list') return c.listTools();
       return redactBrowserSecrets(await c.callTool({name: request.tool, arguments: request.arguments || {}}, undefined, {timeout: 120000}));
     },
-    async close() {for(const assist of assists.values())assist.close();for(const side of sideScreens.values())side.close();await Promise.allSettled([...clients.values()].map(c => c.close())); }
+    async close() {await Promise.allSettled([...assists.values()].map(a=>a.close()));for(const side of sideScreens.values())side.close();await Promise.allSettled([...clients.values()].map(c => c.close())); }
   };
   return engines;
 }

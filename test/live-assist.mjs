@@ -27,7 +27,7 @@ async function call(name,args={}) {
 }
 try {
   await client.connect(transport);
-  const listed=await client.listTools();check(listed.tools.length===27,'Muse discovers the original 17 tools plus 10 assistance tools');
+  const listed=await client.listTools();check(listed.tools.length===34,'Muse discovers 17 base tools, 10 assistance tools and 7 SideUser tools');
   const health=await call('agent_tools_status');check(health.data.winapp.installed&&health.data.ufo.ready&&health.data.omniparser.ready,'Actual winapp, UFO imports and downloaded OmniParser/OCR models ready');
   check(!health.data.mousemux.ready,'Unavailable/unverified vendor actuation is not reported as ready');
   const status=(await call('sidescreen_status')).data;check(status.available&&status.ready,'CUA Driver and fresh SideScreen display ready');

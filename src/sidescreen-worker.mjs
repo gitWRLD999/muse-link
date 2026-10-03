@@ -131,5 +131,7 @@ export function createSideScreenEngine({directory,run,env={}}={}) {
   // Private broker extension boundary; not an agent tool or global input escape.
   handler.scope=args=>execute({Action:'Scope',WindowHandle:args.window_handle,ExpectedDisplayId:args.expected_display_id});
   handler.pointer=args=>execute({Action:'SideCursorAct',WindowHandle:args.window_handle,ExpectedDisplayId:args.expected_display_id,ObservationId:args.observation_id,Tool:args.operation,Arguments:{x:args.x,y:args.y,button:args.button||'left'}});
+  handler.virtual=args=>execute({Action:'VirtualAct',WindowHandle:args.window_handle,ExpectedDisplayId:args.expected_display_id,ObservationId:args.observation_id,Tool:args.operation,Arguments:args.arguments,CursorId:args.cursor_id,CursorLabel:args.label});
+  handler.release=(scope,cursorId)=>execute({Action:'VirtualRelease',WindowHandle:scope.windowHandle,ExpectedDisplayId:scope.displayId,ExpectedProcessId:scope.processId,ExpectedProcessStartTicks:scope.processStartTicks,CursorId:cursorId});
   handler.close=()=>stop(Error('SideScreen shutting down'));return handler;
 }
