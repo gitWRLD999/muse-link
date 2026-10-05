@@ -1,4 +1,4 @@
-param([string]$HomeDirectory = (Join-Path $env:LOCALAPPDATA 'MuseLink'))
+param([string]$HomeDirectory = (Join-Path $env:USERPROFILE 'AgentTools\MuseLink'))
 $ErrorActionPreference = 'Stop'
 $stateDirectory = Join-Path ([IO.Path]::GetFullPath($HomeDirectory)) 'state'
 $configFile = Join-Path $HomeDirectory 'config.json'

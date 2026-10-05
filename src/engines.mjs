@@ -19,9 +19,13 @@ export function engineForTool(config,request) {
 export const desktopActions = ['/position', '/screen_size', '/windows', '/activate_window', '/screenshot', '/move', '/click', '/drag', '/scroll', '/type', '/press', '/hotkey', '/key_down', '/key_up', '/pixel', '/clipboard/set', '/clipboard/get'];
 const require = createRequire(import.meta.url);
 
-export function createEngines(config) {
+export function createEngines(config,{sideScreenFactory=createSideScreenEngine}={}) {
   const clients = new Map(), sideScreens = new Map(), browsers = new Map(), assists = new Map(), health = new Map();
   const browserReady = new Set();
+  function operationHealth(name,request,ok,error=null) {
+    const previous=health.get(name)||{ok:null,ready:null,checkedAt:null};
+    health.set(name,{...previous,lastOperation:{tool:request.tool,ok,error,checkedAt:new Date().toISOString()}});
+  }
   async function client(name, spec) {
     if (clients.has(name)) return clients.get(name);
     let command = spec.command === 'node' ? process.execPath : spec.command;
@@ -34,18 +38,18 @@ export function createEngines(config) {
       if (spec.profile) args.push('--profile-dir-name', spec.profile);
       if(config.engines.sidescreen?.kind==='sidescreen') {
         const side=config.engines.sidescreen;
-        if(!sideScreens.has('sidescreen'))sideScreens.set('sidescreen',createSideScreenEngine({directory:side.directory,env:side.env}));
+        if(!sideScreens.has('sidescreen'))sideScreens.set('sidescreen',sideScreenFactory({directory:side.directory,env:side.env}));
         const status=JSON.parse((await sideScreens.get('sidescreen')({method:'call',tool:'sidescreen_status',arguments:{}})).content[0].text);
         if(!status.available)throw Error('SideScreen display unavailable; browser connection was not launched.');
         env.MUSE_CHROME_BOUNDS=JSON.stringify(status.agentScreen);
       }
     }
-    const c = new Client({name: 'Muse Link', version: '1.4.1'});
+    const c = new Client({name: 'Muse Link', version: '1.4.2'});
     const transport = new StdioClientTransport({command, args, cwd: spec.cwd || config.home, env, stderr: 'inherit'});
     try { await c.connect(transport); } catch (error) { await transport.close(); throw error; }
     clients.set(name, c);
     c.onclose = () => {
-      if (clients.get(name) === c) {clients.delete(name);browsers.delete(name);browserReady.delete(name);}
+      if (clients.get(name) === c) {clients.delete(name);browsers.delete(name);browserReady.delete(name);health.set(name,{ok:false,ready:false,error:'Chrome transport closed; inspect chrome_status',checkedAt:new Date().toISOString()});}
     };
     return c;
   }
@@ -67,15 +71,19 @@ export function createEngines(config) {
       if(spec.kind==='assist') {
         const sideName=spec.desktop||'sidescreen',sideSpec=config.engines[sideName];
         if(sideSpec?.kind!=='sidescreen')throw Error('Agent assistance requires SideScreen');
-        if(!sideScreens.has(sideName))sideScreens.set(sideName,createSideScreenEngine({directory:sideSpec.directory,env:sideSpec.env}));
+        if(!sideScreens.has(sideName))sideScreens.set(sideName,sideScreenFactory({directory:sideSpec.directory,env:sideSpec.env}));
         if(!assists.has(name))assists.set(name,createAssistEngine(spec,sideScreens.get(sideName)));
         return assists.get(name)(request);
       }
       if (spec.kind === 'sidescreen') {
-        if (!sideScreens.has(name)) sideScreens.set(name, createSideScreenEngine({directory: spec.directory,env:spec.env}));
+        if (!sideScreens.has(name)) sideScreens.set(name, sideScreenFactory({directory: spec.directory,env:spec.env}));
         await sideScreens.get(name).users?.assertAccess(request);
         const result=await sideScreens.get(name)(request);
-        if(request.method==='call'){const data=JSON.parse(result.content[0].text);health.set(name,{ok:data.ok!==false,ready:data.ready??(data.ok!==false),error:data.error||data.healthError||null,checkedAt:new Date().toISOString()});}
+        if(request.method==='call'){
+          const data=JSON.parse(result.content[0].text);
+          if(request.tool==='sidescreen_status')health.set(name,{ok:data.ok!==false&&data.available!==false,ready:data.ready===true,available:data.available??null,error:data.error||data.healthError||null,checkedAt:new Date().toISOString(),lastOperation:health.get(name)?.lastOperation});
+          else operationHealth(name,request,!result.isError&&data.ok!==false,data.error||null);
+        }
         return result;
       }
       if (spec.kind === 'desktop') {
@@ -89,7 +97,7 @@ export function createEngines(config) {
         try {
           let guard=fn=>fn();
           if(config.engines.sidescreen?.kind==='sidescreen') {
-            if(!sideScreens.has('sidescreen'))sideScreens.set('sidescreen',createSideScreenEngine({directory:config.engines.sidescreen.directory,env:config.engines.sidescreen.env}));
+            if(!sideScreens.has('sidescreen'))sideScreens.set('sidescreen',sideScreenFactory({directory:config.engines.sidescreen.directory,env:config.engines.sidescreen.env}));
             guard=fn=>sideScreens.get('sidescreen').guard(fn);
           }
           let c;
@@ -111,9 +119,11 @@ export function createEngines(config) {
           const result=await guard(()=>browsers.get(name)(request));
           let ready=false;try{ready=JSON.parse(result.content?.find(c=>c.type==='text')?.text).ready===true;}catch{}
           if(inspect&&!result.isError&&ready)browserReady.add(name);
-          health.set(name,{ok:!result.isError,profile:spec.profile,checkedAt:new Date().toISOString()});return result;
+          if(inspect&&!result.isError)health.set(name,{ok:ready,ready,profile:spec.profile,checkedAt:new Date().toISOString(),lastOperation:health.get(name)?.lastOperation});
+          else operationHealth(name,request,!result.isError,result.isError?'Chrome action refused; inspect chrome_status':null);
+          return result;
         }
-        catch(error){health.set(name,{ok:false,error:'Chrome connection/action failed; inspect with chrome_status',checkedAt:new Date().toISOString()});throw error;}
+        catch(error){operationHealth(name,request,false,'Chrome connection/action failed; inspect with chrome_status');throw error;}
       }
       const c = await client(name, spec);
       if (request.method === 'list') return c.listTools();
