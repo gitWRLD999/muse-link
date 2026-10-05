@@ -40,7 +40,7 @@ export function createEngines(config) {
         env.MUSE_CHROME_BOUNDS=JSON.stringify(status.agentScreen);
       }
     }
-    const c = new Client({name: 'Muse Link', version: '1.4.0'});
+    const c = new Client({name: 'Muse Link', version: '1.4.1'});
     const transport = new StdioClientTransport({command, args, cwd: spec.cwd || config.home, env, stderr: 'inherit'});
     try { await c.connect(transport); } catch (error) { await transport.close(); throw error; }
     clients.set(name, c);

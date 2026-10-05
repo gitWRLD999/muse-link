@@ -51,7 +51,8 @@ export function resolveSideScreenDirectory(explicit,env=process.env) {
   if(explicit && found!==explicit)throw Error('Configured SideScreen helper is missing; correct its installed directory.');
   if(!found)throw Error('SideScreen helper not found. Install to a path visible to the interactive broker; packaged AppData paths can differ.');return found;
 }
-export function createSideScreenEngine({directory,run,env={}}={}) {
+export function createSideScreenEngine({directory,run,env={},nativeFirst='auto'}={}) {
+  let nativeReady=nativeFirst===true;
   let child,lines,pending,errors='';
   function stop(error) {pending?.reject(error);pending=undefined;lines?.close();lines=undefined;child?.kill();child=undefined;}
   async function executeRaw(request) {
@@ -79,6 +80,13 @@ export function createSideScreenEngine({directory,run,env={}}={}) {
   let tail=Promise.resolve();
   const execute=request=>{const result=tail.then(()=>executeRaw(request));tail=result.catch(()=>{});return result;};
   const observe=args=>execute(translateSideScreen('sidescreen_observe',{window_handle:args.window_handle,expected_display_id:args.expected_display_id,include_screenshot:args.include_screenshot===true}));
+  const nativeObserve=args=>execute({Action:'NativeObserve',WindowHandle:args.window_handle,ExpectedDisplayId:args.expected_display_id});
+  function nativeSupported(element,step) {
+    const fields=Object.keys(step.arguments);
+    return element?.sidescreen_route==='native-control-messages' && !element.sidescreen_text_refused &&
+      (step.tool==='set_value' && element.actions?.includes('set_value') && fields.every(k=>k==='value') ||
+       step.tool==='click' && element.actions?.some(a=>['invoke','toggle','select'].includes(a)) && fields.length===0);
+  }
   function matching(observation,choice) {
     if(!choice || !Object.keys(choice).length)throw Error('Provide a label or role selector');
     return (observation.state?.elements||[]).filter(e=>(choice.label===undefined||e.label===choice.label)&&(choice.role===undefined||e.role===choice.role));
@@ -101,18 +109,30 @@ export function createSideScreenEngine({directory,run,env={}}={}) {
     } else if(request.tool==='sidescreen_steps') {
       for(const step of args.steps)if(Object.keys(step.arguments).some(k=>['element_token','x','y'].includes(k)))throw Error('Steps resolve their own fresh token; pixel/token overrides refused');
       const receipts=[];
+      let usedNative=false;
+      let scope;
+      const sameBatchWindow=before=>{if(!before.scope)return true;if(!scope)scope=before.scope;return JSON.stringify(scope)===JSON.stringify(before.scope);};
       for(const step of args.steps) {
-        const before=await observe(args);
+        let before=nativeReady?await nativeObserve(args):await observe(args);
         if(!before.ok){result={...before,completed:receipts.length,receipts};break;}
-        const matches=matching(before,step.selector);
+        if(!sameBatchWindow(before)){result={ok:false,stop:true,error:'Window identity or geometry changed during steps; no input replayed',completed:receipts.length,receipts};break;}
+        let matches=matching(before,step.selector);
+        if(nativeReady && (matches.length!==1 || !nativeSupported(matches[0],step))) {
+          before=await observe(args);
+          if(!before.ok){result={...before,completed:receipts.length,receipts};break;}
+          if(!sameBatchWindow(before)){result={ok:false,stop:true,error:'Window changed during backend preparation; no input dispatched',completed:receipts.length,receipts};break;}
+          matches=matching(before,step.selector);
+        }
+        usedNative=before.backend==='native-control-messages';
         if(matches.length!==1){result={ok:false,stop:true,error:'Control missing or ambiguous; inspect again',completed:receipts.length,receipts,observation:before};break;}
         const receipt=await execute(translateSideScreen('sidescreen_act',{window_handle:args.window_handle,expected_display_id:args.expected_display_id,observation_id:before.observationId,tool:step.tool,arguments:{...step.arguments,element_token:matches[0].element_token}}));
         receipts.push(receipt);
         if(!receipt.ok||receipt.stop){result={ok:false,stop:true,completed:receipts.length,receipts};break;}
       }
-      if(!result) {const observation=await observe(args);result={ok:observation.ok,completed:receipts.length,receipts,observation};}
+      if(!result) {const observation=usedNative?await nativeObserve(args):await observe(args);result={ok:observation.ok,completed:receipts.length,receipts,observation};}
     } else {
       result=await execute(translated);
+      if(request.tool==='sidescreen_status' && nativeFirst==='auto')nativeReady=result.nativeObservation===true;
       if(request.tool==='sidescreen_act_and_observe' && result.ok && !result.stop) {const observation=await observe(args);result={ok:observation.ok,receipt:result,observation};}
     }
     const content=[{type:'text',text:JSON.stringify(result)}],observation=result.observation||result;
