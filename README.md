@@ -57,10 +57,10 @@ node .\bin\muse-link.mjs serve
 
 The config defaults to `%USERPROFILE%\AgentTools\MuseLink\config.json`, with credentials in its `state` directory and CLI screenshots in `artifacts`. Ctrl+C stops a manually started broker. A Windows broker providing desktop/browser adapters must run in a signed-in interactive session, rather than an SSH service session.
 
-You can also install the [v1.4.0 npm package archive](https://github.com/gitWRLD999/muse-link/releases/download/v1.4.0/gitwrld999-muse-link-1.4.0.tgz):
+You can also install the [v1.4.1 npm package archive](https://github.com/gitWRLD999/muse-link/releases/download/v1.4.1/gitwrld999-muse-link-1.4.1.tgz):
 
 ```powershell
-npm install -g https://github.com/gitWRLD999/muse-link/releases/download/v1.4.0/gitwrld999-muse-link-1.4.0.tgz
+npm install -g https://github.com/gitWRLD999/muse-link/releases/download/v1.4.1/gitwrld999-muse-link-1.4.1.tgz
 muse-link init
 muse-link serve
 ```

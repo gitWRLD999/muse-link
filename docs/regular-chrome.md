@@ -34,6 +34,13 @@ only on bridge-owned tabs. Popups are adopted only when their opener is owned.
 The bridge is shared by clients of the same configured browser engine; these
 browser tabs are not per-client security boundaries.
 
+Version 1.4.2 verifies the live Page with a fresh random challenge before using
+its Chrome tab ID. Historical or copied page markers no longer cause an
+ambiguous identity. A stale cached ID is rebound through the
+same challenge; selection checks that verified ID within the agent group.
+A genuinely ambiguous fresh proof still refuses work. Recovery never chooses
+the first matching tab, adopts a human tab, or replays an input operation.
+
 Cold extension attachment can activate Chrome. The focus guard stops after
 that preparation before a requested webpage navigation or form action begins.
 Inspect `chrome_status` before continuing after `stop:true`; do not replay an
@@ -60,6 +67,14 @@ session. Site login completion and OAuth consent were not automated. Cold
 attachment focus changes were detected separately. Tests of group relocation
 and preserving unrelated tabs use a browser-effect model; arbitrary Chrome
 window arrangements have not all been certified.
+
+Verification for 1.4.2: 49 Node tests and five SSH helper tests passed. The
+installed package passed 32 live checks through its persistent `mcp agent`
+proxy, including Profile 1 token matching, navigation, DOM operations,
+screenshots and background native/WPF actions. Tested actions preserved
+foreground and keyboard focus. Cold attachment stops were inspected
+separately. These local checks do not verify a remote agent's SSH network or
+its daemon. See [connection recovery](connection-recovery.md).
 
 Old OpenClaw `chrome-tools.json` catalogs containing raw `browser_tabs` and
 32 Playwright tools describe the original adapter. The current route uses

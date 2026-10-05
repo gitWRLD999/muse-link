@@ -43,6 +43,7 @@ export function createRegularChrome({call,profile,getScreen,getProfileInfo,token
     const profileInfo=getProfileInfo?await getProfileInfo():{directory:profile||null,source:'configuration',siteLogin:'not-checked'};
     const code=`async (page) => {
       const context=page.context(),owner=${JSON.stringify(owner)},screen=${JSON.stringify(screen)};
+      let proofSequence=0;const freshProof=()=>${JSON.stringify(randomUUID())}+'-'+(++proofSequence);
       const owned=p=>p.__museLinkOwner===owner;
       const extension=p=>p.url().startsWith('chrome-extension://mmlmfjhmonkocbjadbfplnigmagldckm/');
       let target=context.pages().find(p=>owned(p)&&p.__museLinkTab===${JSON.stringify(selected)});
@@ -51,7 +52,7 @@ export function createRegularChrome({call,profile,getScreen,getProfileInfo,token
       }
       // Only popups with an owned opener may join the owned-tab list.
       for(const p of context.pages())if(!p.__museLinkOwner&&!p.__museLinkControl) {
-        const opener=await p.opener();if(opener&&owned(opener)){p.__museLinkOwner=owner;p.__museLinkTab=crypto.randomUUID();}
+        const opener=await p.opener();if(opener&&owned(opener)){p.__museLinkOwner=owner;p.__museLinkTab=freshProof();}
       }
       if(!target&&${repair}){target=await context.newPage();target.__museLinkOwner=owner;target.__museLinkTab=${JSON.stringify(selected)};}
       let controller=context.pages().find(p=>p.__museLinkControl===owner);
@@ -61,21 +62,27 @@ export function createRegularChrome({call,profile,getScreen,getProfileInfo,token
       };
       const geometry=async p=>{
         const c=await control();
-        if(!p.__museLinkChromeId){
-          const marker=p.__museLinkTab||('controller-'+owner);
-          await p.evaluate(id=>{window.__museLinkGeometryId=id;},marker);
-          p.__museLinkChromeId=await c.evaluate(async marker=>{
-            for(let i=0;i<20;i++){
-              const ownerTab=await chrome.tabs.getCurrent();const matches=[];
-              if(ownerTab.groupId>=0)for(const t of await chrome.tabs.query({groupId:ownerTab.groupId})){
+        // Copied or stale page state can retain an old DOM marker. Challenge
+        // the live Page anew; stable ownership IDs are not Chrome tab proofs.
+        const marker=freshProof();
+        await p.evaluate(id=>{window.__museLinkGeometryId=id;},marker);
+        p.__museLinkChromeId=await c.evaluate(async ({marker,cached})=>{
+          for(let i=0;i<20;i++){
+            const ownerTab=await chrome.tabs.getCurrent();const matches=[];
+            if(ownerTab.groupId>=0){
+              const members=await chrome.tabs.query({groupId:ownerTab.groupId});
+              if(cached&&members.some(t=>t.id===cached)){
+                try{const r=await chrome.debugger.sendCommand({tabId:cached},'Runtime.evaluate',{expression:'window.__museLinkGeometryId',returnByValue:true});if(r.result?.value===marker)return cached;}catch{}
+              }
+              for(const t of members){
                 try{const r=await chrome.debugger.sendCommand({tabId:t.id},'Runtime.evaluate',{expression:'window.__museLinkGeometryId',returnByValue:true});if(r.result?.value===marker)matches.push(t.id);}catch{}
               }
-              if(matches.length===1)return matches[0];if(matches.length>1)throw Error('Agent tab identity is ambiguous');
-              await new Promise(r=>setTimeout(r,100));
             }
-            throw Error('Agent tab identity missing; inspect chrome_status');
-          },marker);
-        }
+            if(matches.length===1)return matches[0];if(matches.length>1)throw Error('Agent tab identity is ambiguous');
+            await new Promise(r=>setTimeout(r,100));
+          }
+          throw Error('Agent tab identity missing; inspect chrome_status');
+        },{marker,cached:p.__museLinkChromeId});
         // Inactive web tabs can report outerWidth/outerHeight=0. Read the
         // actual Chrome window for the verified tab instead of page JS.
         return c.evaluate(async id=>{const t=await chrome.tabs.get(id),w=await chrome.windows.get(t.windowId);return {x:w.left,y:w.top,width:w.width,height:w.height};},p.__museLinkChromeId);
@@ -122,17 +129,16 @@ export function createRegularChrome({call,profile,getScreen,getProfileInfo,token
       const status=async()=>({engine:'regular_chrome',profile:${JSON.stringify(profile||null)},profilePinned:${!!profile},profileEvidence:${JSON.stringify(profileInfo)},profileTokenMatched:tokenVerified,route:'playwright-extension',ready:!!target&&inside(await geometry(target)),agentScreen:screen,selected_tab:target?target.__museLinkTab:null,tabs:await tabs(),recovery:'chrome_ready',accountAccess:'Profile cookies are shared across windows. Native Chrome account choosers use chrome_desktop_observe/act. Do not move main Chrome or substitute Patchright. Password, MFA, passkey and security barriers need human completion in this profile; account choice and access grants require user authorization.'});
       const state=async()=>({tab_id:target.__museLinkTab,url:target.url(),title:await target.title(),window:await geometry(target),snapshot:(await target.locator('body').ariaSnapshot({timeout:5000})).slice(0,12000)});
       const selectVisible=async()=>{
-        await target.evaluate(id=>{window.__museLinkTabId=id;},target.__museLinkTab);const c=await control();
-        const tabId=await c.evaluate(async id=>{
+        await geometry(target);const marker=freshProof();
+        await target.evaluate(id=>{window.__museLinkTabId=id;},marker);const c=await control();
+        const tabId=await c.evaluate(async ({id,marker})=>{
           let tab=await chrome.tabs.getCurrent();for(let i=0;tab.groupId<0&&i<20;i++){await new Promise(r=>setTimeout(r,100));tab=await chrome.tabs.getCurrent();}
           if(tab.groupId<0)throw Error('Agent group missing; refusing unrelated tabs');
-          const matches=[];
-          for(const t of await chrome.tabs.query({groupId:tab.groupId})){
-            if(t.id===tab.id)continue;
-            try{const r=await chrome.debugger.sendCommand({tabId:t.id},'Runtime.evaluate',{expression:'window.__museLinkTabId',returnByValue:true});if(r.result?.value===id)matches.push(t);}catch{}
-          }
-          if(matches.length!==1)throw Error('Agent tab missing or ambiguous');await chrome.tabs.update(matches[0].id,{active:true});return matches[0].id;
-        },target.__museLinkTab);return {controller:c,tabId};
+          if(id===tab.id||!(await chrome.tabs.query({groupId:tab.groupId})).some(t=>t.id===id))throw Error('Agent tab missing; inspect chrome_status');
+          const r=await chrome.debugger.sendCommand({tabId:id},'Runtime.evaluate',{expression:'window.__museLinkTabId',returnByValue:true});
+          if(r.result?.value!==marker)throw Error('Agent tab identity changed; inspect chrome_status');
+          await chrome.tabs.update(id,{active:true});return id;
+        },{id:target.__museLinkChromeId,marker});return {controller:c,tabId};
       };
       const desktopIdentity=async()=>{
         await scope();const c=await control();await geometry(target);

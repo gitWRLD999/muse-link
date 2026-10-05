@@ -6,7 +6,7 @@ import {createRegularChrome} from '../src/browser.mjs';
 
 // Execute the shipped Playwright callbacks against a browser model with a
 // separate human tab. Assertions concern effects, not generated source text.
-function fixture({shared=false,wrongToken=false,zeroMetrics=false}={}) {
+function fixture({shared=false,wrongToken=false,zeroMetrics=false,cloneFreshProof=false}={}) {
   let id=0,windowId=1;const pages=[],effects=[];
   const screen={x:-1920,y:0,width:1920,height:1080};
   const windows=new Map([[1,shared?{x:0,y:0,width:1400,height:940}:{x:-1880,y:40,width:1400,height:940}]]);
@@ -34,7 +34,9 @@ function fixture({shared=false,wrongToken=false,zeroMetrics=false}={}) {
             tabGroups:{move:async(group,q)=>{effects.push(['group-move',group,q]);for(const t of pages)if(t.groupId===group)t.windowId=q.windowId;}}
           }};
         if(zeroMetrics)Object.assign(sandbox,{screenX:0,screenY:0,outerWidth:0,outerHeight:0});
-        return vm.runInNewContext('('+fn.toString()+')',sandbox)(arg);
+        const result=await vm.runInNewContext('('+fn.toString()+')',sandbox)(arg);
+        if(cloneFreshProof&&p===initial&&p.document.__museLinkGeometryId){human.groupId=p.groupId;human.document.__museLinkGeometryId=p.document.__museLinkGeometryId;}
+        return result;
       }};
     pages.push(p);return p;
   }
@@ -42,7 +44,8 @@ function fixture({shared=false,wrongToken=false,zeroMetrics=false}={}) {
   const human=make('https://human.example/private',-1);
   const browser=createRegularChrome({profile:'Profile 1',getScreen:async()=>screen,tokenHash:createHash('sha256').update('profile-one-token').digest('hex'),call:async(_,args)=>{
     const p=initial.closed?context.pages().find(p=>p.__museLinkControl)||human:initial;
-    const value=await vm.runInNewContext('('+args.code+')',{crypto:webcrypto})(p);
+    // The actual Playwright MCP callback sandbox has no Node crypto global.
+    const value=await vm.runInNewContext('('+args.code+')',{})(p);
     return {content:[{type:'text',text:'### Result\n'+JSON.stringify(value)}]};
   }});
   return {call:async(tool,args={})=>{const r=await browser({method:'call',tool,arguments:args});return JSON.parse(r.content[0].text);},pages,human,initial,windows,effects,screen};
@@ -107,4 +110,33 @@ test('inactive tab metrics cannot falsely report a missing screen and activation
   assert.equal((await f.call('chrome_status')).ready,true);
   assert.ok(f.effects.some(e=>e[0]==='tab-update'&&e[1]!==f.human.id&&e[2].active));
   assert.ok(!f.effects.some(e=>e[0].startsWith('window-')));
+});
+
+test('copied historical tab markers do not wedge recovery or select the human tab',async()=>{
+  const f=fixture();await f.call('chrome_ready');await f.call('open_url',{url:'https://agent.example/'});
+  // Model a duplicate/restored group tab retaining the old page globals and a
+  // reconnect losing its cached Chrome tab binding.
+  f.human.groupId=f.initial.groupId;
+  f.human.document.__museLinkGeometryId=f.initial.document.__museLinkGeometryId;
+  f.human.document.__museLinkTabId=f.initial.document.__museLinkTabId;
+  delete f.initial.__museLinkChromeId;
+  assert.equal((await f.call('chrome_ready')).ready,true);
+  await f.call('open_url',{url:'https://agent.example/recovered'});
+  assert.equal(f.human.url(),'https://human.example/private');
+  assert.ok(!f.effects.some(e=>e[0]==='tab-update'&&e[1]===f.human.id));
+});
+
+test('a stale cached Chrome ID is rebound before navigation, without activating its old target',async()=>{
+  const f=fixture();await f.call('chrome_ready');f.human.groupId=f.initial.groupId;
+  f.initial.__museLinkChromeId=f.human.id;
+  await f.call('open_url',{url:'https://agent.example/rebound'});
+  assert.equal(f.initial.__museLinkChromeId,f.initial.id);
+  assert.equal(f.human.url(),'https://human.example/private');
+  assert.ok(!f.effects.some(e=>e[0]==='tab-update'&&e[1]===f.human.id));
+});
+
+test('ambiguous fresh identity proof refuses navigation instead of choosing a tab',async()=>{
+  const f=fixture({cloneFreshProof:true});
+  await assert.rejects(f.call('chrome_ready'),/identity is ambiguous/);
+  assert.ok(!f.effects.some(e=>e[0]==='tab-update'||(e[0]==='navigate'&&e[2].startsWith('https:'))));
 });
